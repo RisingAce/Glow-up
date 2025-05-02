@@ -2,6 +2,7 @@ import Image from 'next/image'
 import MeterUploadForm from '@/components/meter-upload-form'
 import { Toaster } from '@/components/ui/toaster'
 import { Sparkles, Zap, CheckCircle, AlertTriangle } from 'lucide-react'
+import ErrorBoundary from '@/components/error-boundary'
 
 export default function Home() {
   return (
@@ -57,7 +58,9 @@ export default function Home() {
         </div>
         
         <div className="bg-gradient-to-tr from-blue-50 to-white rounded-xl shadow-lg border border-blue-100 p-6 mb-12">
-          <MeterUploadForm />
+          <ErrorBoundary>
+            <MeterUploadForm />
+          </ErrorBoundary>
         </div>
       </div>
       

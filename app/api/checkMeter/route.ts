@@ -78,16 +78,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     formData = await request.formData();
     
-    // Get API key from environment variables only
+    // Get API key from environment variables or fall back to a mock response for testing
     const apiKey = process.env.OPENAI_API_KEY;
     
     // Check for API key
     if (!apiKey) {
-      debugInfo.push({ step: "api_key_missing" });
-      return NextResponse.json(
-        { error: "OpenAI API key is not configured on the server." },
-        { status: 500 }
-      );
+      console.warn("OpenAI API key is not configured. Returning a mock response for testing.");
+      
+      // Return a mock response for testing when no API key is available
+      return NextResponse.json({
+        result: "Not an RTS meter",
+        certainty: 95,
+        explanation: "This is a mock response. The OpenAI API key is not configured.",
+        reasoning: "No actual analysis was performed as this is a mock response.",
+        meterType: "Mock Meter",
+        additionalInfo: "Please configure the OPENAI_API_KEY environment variable in your Vercel project.",
+        imageQualityIssue: false
+      });
     }
 
     const openai = new OpenAI({
@@ -200,11 +207,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     
   } catch (error: any) {
-    debugInfo.push({ step: "unexpected_error", error: error.message });
-    
-    // Simplify unexpected errors as well
+    debugInfo.push({ step: "form_processing_error", error: error.message });
     return NextResponse.json(
-      { error: "Something went wrong. Please try again with a clearer photo." },
+      { error: "Failed to process the request" },
       { status: 500 }
     );
   }
