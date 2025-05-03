@@ -16,14 +16,19 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  // Place ThemeProvider OUTSIDE html/body for next-themes best practice
+  // ThemeProvider should wrap the children INSIDE the body tag
   return (
-    <ThemeProvider attribute="class" defaultTheme="light">
-      <html lang="en" suppressHydrationWarning>
-        <body className={inter.className}>
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.className}>
+        <ThemeProvider 
+          attribute="class" 
+          defaultTheme="light" 
+          enableSystem 
+          disableTransitionOnChange
+        >
           {children}
-        </body>
-      </html>
-    </ThemeProvider>
+        </ThemeProvider>
+      </body>
+    </html>
   )
 }

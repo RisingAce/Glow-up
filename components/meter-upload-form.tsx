@@ -17,7 +17,8 @@ import {
   Download, 
   Sparkles, 
   Zap, 
-  Phone 
+  Phone,
+  ExternalLink
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
@@ -45,6 +46,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { MeterAnalysisResult } from "../types/meter-types"
+
+const MORE_INFO_FEEDBACK = "Please take a clearer photo of the meter, ensuring the entire meter is visible and in focus.";
 
 const BetterImageNeeded = ({ message, onReset, hasCamera, onStartCamera }: { 
   message: string; 
@@ -108,12 +111,12 @@ export default function MeterUploadForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<MeterAnalysisResult | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [imageQualityWarning, setImageQualityWarning] = useState<string | null>(null)
+  const [imageQualityWarning, setImageQualityWarning] = useState<string | null>(null) // State for non-blocking quality warnings
   
   const [dragActive, setDragActive] = useState(false)
   const [showCamera, setShowCamera] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [analysisPhase, setAnalysisPhase] = useState<string | null>(null)
+  // Removed uploadProgress as it wasn't fully implemented and analysisPhase provides better context
+  const [analysisPhase, setAnalysisPhase] = useState<string | null>(null) // e.g., 'Uploading', 'Enhancing', 'Analyzing'
   
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -155,251 +158,214 @@ export default function MeterUploadForm() {
     
     if (isLoading) {
       interval = setInterval(() => {
-        setUploadProgress((prev) => {
-          const newValue = prev + (100 - prev) * 0.05;
-          return newValue > 99 ? 99 : newValue;
-        });
-        
-        if (uploadProgress < 30) {
-          setAnalysisPhase("Preparing image for analysis...");
-        } else if (uploadProgress < 60) {
-          setAnalysisPhase("Analyzing with o4-mini...");
-        } else if (uploadProgress < 75) {
-          setAnalysisPhase("Evaluating confidence scores...");
-        } else {
-          setAnalysisPhase("Finalizing results...");
-        }
+        // Removed uploadProgress updates as it's not fully implemented
       }, 300);
     } else {
-      setUploadProgress(0);
-      setAnalysisPhase(null);
+      // Removed uploadProgress reset as it's not fully implemented
     }
     
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isLoading, uploadProgress]);
+  }, [isLoading]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    if (!selectedFile) return
-
-    if (!["image/jpeg", "image/png"].includes(selectedFile.type)) {
-      toast({
-        title: "Invalid file type",
-        description: "Please upload a JPG or PNG image",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setFile(selectedFile)
-    setResult(null)
-    setErrorMessage(null)
+    setErrorMessage(null) // Clear errors on new file selection
+    setResult(null) // Clear previous results
     setImageQualityWarning(null)
+    setAnalysisPhase(null)
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      setPreviewUrl(reader.result as string)
+    const selectedFile = e.target.files?.[0]
+    if (selectedFile) {
+      if (selectedFile.size > 5 * 1024 * 1024) { // 5MB limit
+        setErrorMessage("File size exceeds 5MB. Please upload a smaller image.")
+        setFile(null)
+        setPreviewUrl(null)
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Clear the input
+        return;
+      }
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(selectedFile.type)) {
+        setErrorMessage("Invalid file type. Please upload a JPG, PNG, WEBP, or GIF image.")
+        setFile(null)
+        setPreviewUrl(null)
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Clear the input
+        return;
+      }
+
+      setFile(selectedFile)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string)
+      }
+      reader.readAsDataURL(selectedFile)
     }
-    reader.readAsDataURL(selectedFile)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file) {
-      toast({
-        title: "No image selected",
-        description: "Please upload or take a photo of your electricity meter",
-        variant: "destructive",
-      })
-      return
-    }
+    if (!file || isLoading) return
 
     setIsLoading(true)
-    setResult(null)
     setErrorMessage(null)
+    setResult(null)
     setImageQualityWarning(null)
-    setUploadProgress(5) // Start progress animation
+    setAnalysisPhase('Uploading') // Set initial phase
 
     try {
-      let response = await analyzeImage(file);
+      // Check for potential quality issues *before* submitting if possible
+      // (Simple client-side checks could go here if desired, e.g., resolution)
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to analyze image");
+      // --- Image Upscaling (Optional) ---
+      let imageToAnalyze = file;
+      let wasImageUpscaled = false;
+      // Optional: Decide if upscaling is needed based on file size/dimensions
+      // For simplicity, we'll attempt upscale if it seems small, but the API handles quality checks robustly.
+      // A more sophisticated check might look at image dimensions.
+      if (file.size < 150 * 1024) { // Example: Try upscale for images under 150KB
+         setAnalysisPhase('Enhancing image');
+         const upscaledFile = await upscaleImage(file);
+         if (upscaledFile) {
+             imageToAnalyze = upscaledFile;
+             wasImageUpscaled = true;
+         } // else: continue with original if upscale fails
       }
-      
-      let data = await response.json();
-      
-      if ((data.certainty && data.certainty < 89) || response.status === 500) {
-        toast({
-          title: "Enhancing Image",
-          description: "Low confidence result. Enhancing image quality and retrying...",
-          variant: "default",
-        });
-        
-        setAnalysisPhase("Enhancing image quality...");
-        
-        const enhancedFile = await upscaleImage(file);
-        
-        if (enhancedFile) {
-          setAnalysisPhase("Analyzing enhanced image...");
-          const enhancedResponse = await analyzeImage(enhancedFile);
-          
-          if (enhancedResponse.ok) {
-            const enhancedData = await enhancedResponse.json();
-            
-            if (!data.certainty || (enhancedData.certainty && enhancedData.certainty > data.certainty)) {
-              enhancedData.wasImageUpscaled = true;
-              data = enhancedData;
-            }
-          }
-        }
-      }
-      
-      if (data.certainty && data.certainty < 80) {
-        setResult(null); 
-        setImageQualityWarning(data.wasImageUpscaled 
-          ? "Even with image enhancement, we couldn't get a clear analysis. Please take a clearer photo of the meter."
-          : (data.imageQualityFeedback || "Please take a clearer photo of the meter."));
-        
-        toast({
-          title: "Better Image Needed",
-          description: data.wasImageUpscaled 
-            ? "Enhancement didn't help enough. We need a clearer photo."
-            : "We need a clearer photo to analyze your meter accurately.",
-          variant: "destructive",
-        });
-      } 
-      else if (data.certainty && data.certainty < 89) {
-        setResult(data);
-        
-        setImageQualityWarning(data.wasImageUpscaled 
-          ? "Image was enhanced, but a clearer photo would provide more accurate results."
-          : (data.imageQualityFeedback || "A clearer photo would provide more accurate results."));
-        
-        toast({
-          title: "Analysis Complete - Moderate Confidence",
-          description: `Analyzed with ${data.certainty}% certainty${data.wasImageUpscaled ? " (with image enhancement)" : ""}`,
-          variant: "default",
-        });
-      }
-      else {
-        setResult(data);
-        
-        if (data.imageQualityIssue && data.imageQualityFeedback && data.result !== "RTS meter") {
-          setImageQualityWarning(data.imageQualityFeedback);
-          
-          toast({
-            title: "Image Quality Issue",
-            description: data.imageQualityFeedback,
-            variant: "destructive",
-          });
-        }
-        
-        toast({
-          title: "Analysis Complete",
-          description: `Analyzed with ${data.certainty}% certainty${data.wasImageUpscaled ? " (with image enhancement)" : ""}`,
-          variant: "default",
-        });
-      }
-      
-      console.log("Analysis response:", data);
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : "Failed to analyze image";
-      setErrorMessage(errorMsg);
-      
-      toast({
-        title: "Error",
-        description: errorMsg,
-        variant: "destructive",
+
+      // --- API Call ---
+      setAnalysisPhase('Analyzing with AI') // Update phase
+      const formData = new FormData()
+      formData.append('image', imageToAnalyze)
+      formData.append('wasImageUpscaled', String(wasImageUpscaled)); // Inform API if upscaled
+
+      const response = await fetch('/api/checkMeter', {
+        method: 'POST',
+        body: formData,
       })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({})) // Gracefully handle non-JSON errors
+        throw new Error(errorData.error || `HTTP error! Status: ${response.status}`)
+      }
+
+      const analysis: MeterAnalysisResult = await response.json()
+      setAnalysisPhase('Processing results') // Update phase
+
+      // Separate handling for blocking issues vs warnings
+      if (analysis.needsBetterImage) {
+        // This is a blocking issue - requires user action
+        setResult(analysis) // Still set result to display the feedback
+        setErrorMessage(null) // Clear generic error message
+      } else if (analysis.imageQualityIssue && analysis.imageQualityFeedback) {
+        // This is a non-blocking warning - show results but also the warning
+        setResult(analysis)
+        setImageQualityWarning(analysis.imageQualityFeedback)
+        setErrorMessage(null) // Clear generic error message
+      } else {
+        // Success case - no major quality issues
+        setResult(analysis)
+        setErrorMessage(null)
+        setImageQualityWarning(null)
+      }
+
+    } catch (error: any) {
+      console.error("Analysis error:", error)
+      // Use the error message from the API if available, otherwise a generic one
+      const message = error?.message || "An unexpected error occurred. Please try again."
+      setErrorMessage(message)
+      setResult(null)
+      setImageQualityWarning(null)
     } finally {
       setIsLoading(false)
+      setAnalysisPhase(null) // Clear phase on completion or error
     }
   }
-  
-  const analyzeImage = async (imageFile: File) => {
-    const formData = new FormData();
-    formData.append("image", imageFile);
-    
-    return fetch("/api/checkMeter", {
-      method: "POST",
-      body: formData,
-    });
-  }
-  
-  const upscaleImage = async (imageFile: File): Promise<File | null> => {
-    try {
-      const img = document.createElement('img');
-      const imgPromise = new Promise<HTMLImageElement>((resolve, reject) => {
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = URL.createObjectURL(imageFile);
-      });
-      
-      const loadedImg = await imgPromise;
-      
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      
-      if (!ctx) return null;
-      
-      const maxSize = 2048;
-      const width = Math.min(loadedImg.width * 2, maxSize);
-      const height = Math.min(loadedImg.height * 2, maxSize);
-      
-      canvas.width = width;
-      canvas.height = height;
-      
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      
-      ctx.drawImage(loadedImg, 0, 0, width, height);
-      
-      ctx.globalCompositeOperation = "source-over";
-      ctx.globalAlpha = 0.1;
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, width, height);
-      ctx.globalAlpha = 1.0;
-      
-      const blob = await new Promise<Blob>((resolve) => 
-        canvas.toBlob(
-          (b) => resolve(b || new Blob([], { type: imageFile.type })),
-          imageFile.type, 
-          0.9
-        )
-      );
-      
-      const enhancedFile = new File([blob], `enhanced-${imageFile.name}`, { 
-        type: imageFile.type,
-        lastModified: Date.now()
-      });
-      
-      URL.revokeObjectURL(img.src);
-      
-      return enhancedFile;
-    } catch (error) {
-      console.error("Image upscaling failed:", error);
-      return null;
-    }
+
+  // Function to initiate analysis (used by button)
+  const analyzeImage = (imageFile: File) => {
+    setFile(imageFile);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+        // Automatically submit after setting the file and preview
+        formRef.current?.requestSubmit(); 
+    };
+    reader.readAsDataURL(imageFile);
   };
 
+  // --- Image Upscaling Function ---
+  const upscaleImage = (imageFile: File): Promise<File | null> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = document.createElement('img');
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            console.warn("Canvas context not available for upscaling.");
+            resolve(null); // Indicate failure
+            return;
+          }
+
+          // Simple 2x upscale example
+          const targetWidth = img.width * 2;
+          const targetHeight = img.height * 2;
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+
+          // Disable image smoothing for potentially sharper results on pixelated images
+          ctx.imageSmoothingEnabled = false;
+
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+
+          // Convert canvas back to File
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const upscaledFile = new File([blob], `upscaled_${imageFile.name}`, {
+                type: imageFile.type, // Keep original type
+                lastModified: Date.now(),
+              });
+              // Optional: Check if upscaled size is reasonable (e.g., not excessively large)
+              if (upscaledFile.size > 5 * 1024 * 1024) { // Limit upscaled size too
+                 console.warn("Upscaled image exceeds size limit, using original.");
+                 resolve(null);
+              } else {
+                 resolve(upscaledFile);
+              }
+            } else {
+              console.warn("Canvas toBlob failed during upscaling.");
+              resolve(null);
+            }
+          }, imageFile.type); // Use original image type
+        };
+        img.onerror = () => {
+           console.warn("Failed to load image for upscaling.");
+           resolve(null);
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => {
+        console.warn("Failed to read file for upscaling.");
+        resolve(null);
+      };
+      reader.readAsDataURL(imageFile);
+    });
+  };
+
+  // --- Reset Function ---
   const handleReset = () => {
     setFile(null)
     setPreviewUrl(null)
+    setIsLoading(false)
     setResult(null)
     setErrorMessage(null)
     setImageQualityWarning(null)
     setShowCamera(false)
-    stopCamera()
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
+    stopCamera() // Ensure camera stops if it was open
+    setAnalysisPhase(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""; // Clear file input
   }
 
+  // --- Drag and Drop Handlers ---
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -420,12 +386,8 @@ export default function MeterUploadForm() {
 
     if (!droppedFile) return
 
-    if (!["image/jpeg", "image/png"].includes(droppedFile.type)) {
-      toast({
-        title: "Invalid file type",
-        description: "Please upload a JPG or PNG image",
-        variant: "destructive",
-      })
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(droppedFile.type)) {
+      setErrorMessage("Invalid file type. Please upload a JPG, PNG, WEBP, or GIF image.")
       return
     }
 
@@ -435,7 +397,7 @@ export default function MeterUploadForm() {
     setImageQualityWarning(null)
 
     const reader = new FileReader()
-    reader.onload = () => {
+    reader.onloadend = () => {
       setPreviewUrl(reader.result as string)
     }
     reader.readAsDataURL(droppedFile)
@@ -718,12 +680,8 @@ export default function MeterUploadForm() {
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
                 </div>
                 <p className="text-white font-medium mb-1">{analysisPhase || "Analyzing..."}</p>
-                <div className="w-48 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 transition-all duration-300 ease-out" 
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
-                </div>
+                {/* Optional Progress Bar - could be tied to a more granular progress state if available */}
+                {/* <Progress value={33} className="w-full max-w-xs mt-2" /> */}
               </div>
             )}
           </div>
@@ -877,7 +835,7 @@ export default function MeterUploadForm() {
                   </div>
                   
                   {result.certainty !== undefined && result.certainty > 0 && (
-                    <Badge variant={result.certainty > 90 ? "default" : "secondary"} className="ml-2">
+                    <Badge variant="default" className="ml-2">
                       {result.certainty}% {result.certainty > 90 ? "Confident" : "Certainty"}
                     </Badge>
                   )}
