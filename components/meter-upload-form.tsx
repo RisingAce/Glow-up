@@ -212,14 +212,12 @@ export default function MeterUploadForm() {
     setAnalysisPhase('Uploading') // Set initial phase
 
     try {
-      // Check for potential quality issues *before* submitting if possible
-      // (Simple client-side checks could go here if desired, e.g., resolution)
-      
-      // --- Initial Analysis without upscaling ---
+      // --- Initial Analysis with original image ---
       let imageToAnalyze = file;
       let wasImageUpscaled = false;
       let analysis: MeterAnalysisResult | null = null;
       let confidence = 0;
+      let attemptedEnhancement = false;
       
       // First attempt - with original image
       setAnalysisPhase('Analyzing with AI')
@@ -243,13 +241,14 @@ export default function MeterUploadForm() {
       }
       confidence = analysis.confidence_score ?? 0;
       
-      // If confidence is low, try upscaling and reanalyzing
+      // If confidence is low, try enhancing the image
       if (confidence < 0.89) {
+        attemptedEnhancement = true;
         setAnalysisPhase('Enhancing image quality') 
         const upscaledFile = await upscaleImage(file)
         
         if (upscaledFile) {
-          // Retry with upscaled image
+          // Retry with enhanced image
           imageToAnalyze = upscaledFile
           wasImageUpscaled = true
           
@@ -264,50 +263,46 @@ export default function MeterUploadForm() {
           })
           
           if (response.ok) {
-            analysis = await response.json()
-            if (!analysis) {
-              throw new Error("Failed to parse analysis result")
+            const enhancedAnalysis = await response.json()
+            if (enhancedAnalysis) {
+              // Use the enhanced results only if they have better confidence
+              const enhancedConfidence = enhancedAnalysis.confidence_score ?? 0;
+              if (enhancedConfidence > confidence) {
+                analysis = enhancedAnalysis;
+                confidence = enhancedConfidence;
+              }
             }
-            confidence = analysis.confidence_score ?? 0
-            
-            // After enhancement, always show the results regardless of confidence
-            setAnalysisPhase('Processing results')
-            
-            // Show warning if confidence is still moderate
-            if (confidence < 0.95) {
-              setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled });
-              setImageQualityWarning(`Enhanced image analysis (${Math.round(confidence * 100)}% confidence). Results may be less reliable with this image quality.`);
-            } else {
-              setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled });
-              setImageQualityWarning(null);
-            }
-            setErrorMessage(null);
-            return; // Exit early and skip the threshold check below
           }
         }
       }
       
+      // ALWAYS show results, but with appropriate warnings based on confidence
       setAnalysisPhase('Processing results')
       
-      // Only run this code for original image (not enhanced) analysis
-      if (!analysis || confidence < 0.89) {
-        // Confidence still too low - require a better image
-        const feedback = analysis?.imageQualityFeedback || MORE_INFO_FEEDBACK;
-        // Don't set result, only set the warning message to trigger BetterImageNeeded component
-        setResult(null);
-        setImageQualityWarning(feedback);
-        setErrorMessage(null);
+      if (!analysis) {
+        throw new Error("No valid analysis result available");
+      }
+      
+      // Always set the result, but add warnings based on confidence
+      setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled });
+      
+      // Set appropriate warning based on confidence level
+      if (confidence < 0.70) {
+        setImageQualityWarning(`Very low confidence (${Math.round(confidence * 100)}%). Results are likely unreliable. Consider uploading a clearer image for better analysis.`);
+      } else if (confidence < 0.89) {
+        if (attemptedEnhancement) {
+          setImageQualityWarning(`Low confidence (${Math.round(confidence * 100)}%) even after enhancement. Results may be less reliable with this image quality.`);
+        } else {
+          setImageQualityWarning(`Low confidence (${Math.round(confidence * 100)}%). Results may be less reliable. Consider using a clearer image.`);
+        }
       } else if (confidence < 0.95) {
-        // Moderate confidence - show result with a warning
-        setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled }); // Ensure needsBetterImage is false
-        setImageQualityWarning(`Confidence is moderate (${Math.round(confidence * 100)}%). Results may be less accurate. ${analysis.imageQualityFeedback || ''}`);
-        setErrorMessage(null);
+        setImageQualityWarning(`Moderate confidence (${Math.round(confidence * 100)}%). Results should be reasonably accurate.`);
       } else {
-        // High confidence - show result normally
-        setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled }); // Ensure needsBetterImage is false
-        setErrorMessage(null);
+        // No warning for high confidence
         setImageQualityWarning(null);
       }
+      
+      setErrorMessage(null);
 
     } catch (error: any) {
       console.error("Analysis error:", error)
