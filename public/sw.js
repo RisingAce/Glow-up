@@ -43,8 +43,8 @@ self.addEventListener('fetch', (event) => {
 
             caches.open(CACHE_NAME)
               .then((cache) => {
-                // Don't cache API requests
-                if (!event.request.url.includes('/api/')) {
+                // Only cache GET requests
+                if (event.request.method === 'GET' && !event.request.url.includes('/api/')) {
                   cache.put(event.request, responseToCache);
                 }
               });
