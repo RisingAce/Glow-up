@@ -205,9 +205,9 @@ export default function MeterUploadForm() {
 
     try {
       // --- STEP 1: Initial attempt with original image ---
-      let originalAnalysis = null;
-      let enhancedAnalysis = null;
-      let finalAnalysis = null;
+      let originalAnalysis: MeterAnalysisResult | null = null;
+      let enhancedAnalysis: MeterAnalysisResult | null = null;
+      let finalAnalysis: MeterAnalysisResult | null = null;
       let wasEnhanced = false;
 
       // Try original image first
@@ -244,6 +244,58 @@ export default function MeterUploadForm() {
       let originalConfidence = originalAnalysis ? (originalAnalysis.confidence_score ?? 0) : 0;
       let enhancedConfidence = enhancedAnalysis ? (enhancedAnalysis.confidence_score ?? 0) : 0;
       
+      console.log("Original confidence (raw):", originalConfidence, 
+                 "Enhanced confidence (raw):", enhancedConfidence);
+                 
+      // Check if the message indicates text is unreadable or image is too poor quality
+      const hasQualityIssue = (analysis: MeterAnalysisResult | null): boolean => {
+        if (!analysis) return false;
+        
+        // Look for specific phrases in explanations and additional info
+        const textToCheck = [
+          analysis.explanation || '',
+          analysis.reasoning || '',
+          analysis.additionalInfo || ''
+        ].join(' ').toLowerCase();
+        
+        const qualityIssueKeywords = [
+          'too small to read',
+          'not clear enough',
+          'blurry',
+          'can\'t read',
+          'unable to read',
+          'not visible',
+          'not legible',
+          'poor quality',
+          'poor resolution',
+          'low resolution',
+          'better image',
+          'clearer image',
+          'hard to see',
+          'difficult to identify',
+          'text is too small'
+        ];
+        
+        return qualityIssueKeywords.some(keyword => textToCheck.includes(keyword));
+      };
+      
+      // Check if we need to request a better image based on quality issues or extremely low confidence
+      const imageTooLowQuality = 
+        (originalAnalysis && hasQualityIssue(originalAnalysis)) || 
+        (enhancedAnalysis && hasQualityIssue(enhancedAnalysis)) ||
+        (Math.max(originalConfidence, enhancedConfidence) < 0.3); // Extremely low confidence threshold
+      
+      if (imageTooLowQuality) {
+        // Don't show results, request a better image
+        setAnalysisPhase('Quality issues detected');
+        setResult(null);
+        setImageQualityWarning(
+          "Image quality is too poor to make a reliable assessment. Text is difficult to read or important features aren't clearly visible. Please take a clearer photo with better lighting and focus."
+        );
+        setIsLoading(false);
+        return; // Exit early
+      }
+      
       // Default certainty displayed will be the higher of the two (or just the one we have)
       const displayCertainty = Math.max(
         enhancedConfidence ? Math.round(enhancedConfidence * 100) : 0,
@@ -262,7 +314,7 @@ export default function MeterUploadForm() {
             ...enhancedAnalysis,
             wasImageUpscaled: true,
             // Critical: Force the certainty value to match our calculation
-            certainty: displayCertainty,
+            certainty: displayCertainty > 0 ? displayCertainty : 10, // Ensure never zero
             // Store both confidence scores for reference
             confidence_score: enhancedConfidence,
             original_confidence_score: originalConfidence
@@ -271,7 +323,7 @@ export default function MeterUploadForm() {
           finalAnalysis = {
             ...originalAnalysis,
             wasImageUpscaled: false,
-            certainty: displayCertainty,
+            certainty: displayCertainty > 0 ? displayCertainty : 10, // Ensure never zero
             confidence_score: originalConfidence,
             enhanced_confidence_score: enhancedConfidence
           };
@@ -280,19 +332,23 @@ export default function MeterUploadForm() {
         finalAnalysis = {
           ...enhancedAnalysis,
           wasImageUpscaled: true,
-          certainty: displayCertainty,
+          certainty: displayCertainty > 0 ? displayCertainty : 10, // Ensure never zero
           confidence_score: enhancedConfidence
         };
       } else if (originalAnalysis) {
         finalAnalysis = {
           ...originalAnalysis,
           wasImageUpscaled: false,
-          certainty: displayCertainty,
+          certainty: displayCertainty > 0 ? displayCertainty : 10, // Ensure never zero
           confidence_score: originalConfidence
         };
       } else {
         throw new Error("Analysis failed. Please try again with a clearer image.");
       }
+
+      // Additional logging to debug certainty display
+      console.log("Final analysis object:", finalAnalysis);
+      console.log("Final certainty value:", finalAnalysis.certainty);
 
       // --- STEP 4: Display results with appropriate warnings ---
       setAnalysisPhase('Processing results');
@@ -685,71 +741,92 @@ export default function MeterUploadForm() {
           className="mt-8 space-y-6"
         >
           {result.result === "RTS meter" ? (
-            <Card className="border-red-300 bg-red-50">
-              <CardHeader className="pb-3">
+            <Card className="border-yellow-300 shadow-sm">
+              <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
-                    <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
-                    <CardTitle className="text-red-800">RTS Meter Detected</CardTitle>
+                    <CheckCircle className="h-5 w-5 text-yellow-600 mr-2" />
+                    <CardTitle className="text-yellow-800">RTS Meter Detected</CardTitle>
                   </div>
                   
-                  {result.certainty !== undefined && result.certainty > 0 && (
-                    <Badge variant="outline" className="ml-2 bg-red-100 border-red-200 text-red-800">
-                      {result.certainty}% Certainty
+                  {result.certainty !== undefined && (
+                    <Badge variant="default" className="ml-2 bg-yellow-100 text-yellow-800 border-yellow-300">
+                      {result.certainty}% {result.certainty > 90 ? "Confident" : "Certainty"}
                       {result.original_confidence_score !== undefined && (
-                        <span className="text-xs ml-1">(improved from {Math.round(result.original_confidence_score * 100)}%)</span>
+                        <span className="text-xs ml-1">(from {Math.round(result.original_confidence_score * 100)}%)</span>
                       )}
                     </Badge>
                   )}
                 </div>
+                
+                <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  <span>Analysis complete</span>
+                  {result.wasImageUpscaled && (
+                    <Badge variant="outline" className="text-xs ml-2 bg-yellow-50 border-yellow-200 text-yellow-700">
+                      Enhanced Image
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
+              
               <CardContent>
                 <div className="space-y-4">
-                  <p className="text-red-700 font-medium">
-                    You need to contact your utility supplier immediately about your RTS meter.
-                  </p>
-                  
-                  <div className="p-4 bg-red-100 rounded-lg border border-red-200">
-                    <h4 className="font-medium text-red-800 mb-2">Why this is important:</h4>
-                    <ul className="space-y-2 text-sm text-red-700">
-                      <li className="flex items-start">
-                        <span className="mr-2">•</span>
-                        <span>RTS meters are being phased out across the UK and will soon stop working</span>
-                      </li>
-                      <li className="flex items-start">
-                        <span className="mr-2">•</span>
-                        <span>Your utility supplier needs to replace it with a smart meter</span>
-                      </li>
-                      <li className="flex items-start">
-                        <span className="mr-2">•</span>
-                        <span>You risk losing access to cheaper off-peak electricity rates</span>
-                      </li>
-                      <li className="flex items-start">
-                        <span className="mr-2">•</span>
-                        <span>The meter may stop receiving the radio signal that switches between rates</span>
-                      </li>
-                    </ul>
+                  <div className="p-4 bg-white rounded-lg border border-yellow-100 shadow-sm">
+                    <p className="text-gray-700">{result.explanation || "An RTS meter was identified in the image."}</p>
                   </div>
                   
-                  <div className="pt-2">
-                    <Button className="w-full bg-red-600 hover:bg-red-700">
-                      <Phone className="h-4 w-4 mr-2" /> 
-                      Call Your Utility Supplier
-                    </Button>
-                  </div>
+                  {/* Certainty Meter */}
+                  {result.certainty !== undefined && (
+                    <div className="pt-2 border-t border-yellow-100 mt-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Confidence Score:</span>
+                        <span className={`font-medium ${getCertaintyColor(result.certainty)}`}>{result.certainty}%</span>
+                      </div>
+                      <div className="mt-1.5 bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="h-full bg-yellow-500 transition-all duration-300 ease-out" 
+                          style={{ width: `${result.certainty}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Technical Details Accordion */}
+                  {result.reasoning && (
+                    <Accordion type="single" collapsible className="border rounded-lg">
+                      <AccordionItem value="reasoning" className="border-b-0">
+                        <AccordionTrigger className="px-4 hover:no-underline hover:bg-yellow-50/50">
+                          <span className="text-sm font-medium text-yellow-700">View Analysis Details</span>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-4 pt-2 pb-3 text-sm bg-gray-50">
+                          <div className="text-gray-700 whitespace-pre-wrap">
+                            {result.reasoning}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  )}
+                  
+                  {/* Any additional info */}
+                  {result.additionalInfo && (
+                    <div className="border rounded-lg p-4 bg-yellow-50/30">
+                      <h4 className="text-sm font-medium text-yellow-700 mb-1">Additional Information</h4>
+                      <p className="text-sm text-gray-700">{result.additionalInfo}</p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ) : (
-            <Card className="border-blue-200 bg-blue-50/30">
-              <CardHeader className="pb-3">
+            <Card className="border-blue-300 shadow-sm">
+              <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
                     <CheckCircle className="h-5 w-5 text-blue-600 mr-2" />
                     <CardTitle className="text-blue-800">Not an RTS Meter</CardTitle>
                   </div>
                   
-                  {result.certainty !== undefined && result.certainty > 0 && (
+                  {result.certainty !== undefined && (
                     <Badge variant="default" className="ml-2">
                       {result.certainty}% {result.certainty > 90 ? "Confident" : "Certainty"}
                       {result.original_confidence_score !== undefined && (
