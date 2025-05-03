@@ -1,0 +1,30 @@
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Check Your Meter",
+  "url": "https://checkyourmeter.com",
+  "description": "Upload a photo of your electricity meter and instantly check if it's an RTS meter that needs replacement. Free, quick and reliable meter verification tool.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Any",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "GBP"
+  },
+  "screenshot": "https://checkyourmeter.com/Logo.PNG",
+  "featureList": "Meter photo verification, RTS meter detection, Instant results",
+  "about": {
+    "@type": "Thing",
+    "description": "A service to help users identify if their electricity meter is an RTS meter that needs replacement"
+  },
+  "author": {
+    "@type": "Organization",
+    "name": "Check Your Meter",
+    "url": "https://checkyourmeter.com"
+  },
+  "provider": {
+    "@type": "Organization",
+    "name": "Check Your Meter",
+    "url": "https://checkyourmeter.com"
+  }
+}
