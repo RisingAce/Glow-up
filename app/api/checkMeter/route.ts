@@ -142,38 +142,52 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       console.warn("OpenAI API key is not configured. Returning a mock response for testing.");
       
       // Return a mock response for testing when no API key is available
+      const mockRTSStatus = useDetailedModel ? "RTS meter" : "Not an RTS meter";
+      const mockCertainty = useDetailedModel ? 95 : 80;
+      
       return NextResponse.json({
-        result: "Not an RTS meter",
-        certainty: 95,
-        explanation: "This is a mock response. The OpenAI API key is not configured.",
-        reasoning: "No actual analysis was performed as this is a mock response.",
-        meterType: "Mock Meter",
-        additionalInfo: "Please configure the OPENAI_API_KEY environment variable in your Vercel project.",
+        result: mockRTSStatus,
+        certainty: mockCertainty,
+        explanation: useDetailedModel 
+          ? "This is a mock detailed analysis. The meter appears to have RTS characteristics including a black housing with a red button." 
+          : "This is a mock response. The OpenAI API key is not configured.",
+        reasoning: useDetailedModel
+          ? "Mock detailed analysis reasoning: The presence of a separate black box with a red button is a strong indicator of an RTS meter."
+          : "No actual analysis was performed as this is a mock response.",
+        meterType: useDetailedModel ? "RTS Economy 7" : "Mock Meter",
+        additionalInfo: useDetailedModel 
+          ? "This mock RTS meter appears to control Economy 7 heating and hot water timing."
+          : "Please configure the OPENAI_API_KEY environment variable in your Vercel project.",
         imageQualityIssue: false,
         detailedAnalysis: useDetailedModel,
         detailedReport: useDetailedModel ? 
           `# Detailed Mock Analysis Report
           
 ## Meter Identification
-This appears to be a standard electricity meter without RTS functionality. The meter displays clear digital readings and has a modern design typical of non-RTS meters.
+This appears to be an RTS meter with the classic features of Radio Teleswitch Service equipment. The black box with red button is the hallmark characteristic of these systems.
 
 ## Technical Specifications
-- **Meter Type**: Standard Digital
-- **Manufacturer**: Mock Manufacturer
-- **Model Number**: MOCK-2025
-- **Communication**: Standard RF (not Radio Teleswitch)
-- **Tariff Support**: Single rate only
+- **Meter Type**: Radio Teleswitch Service (RTS)
+- **Configuration**: Economy 7 
+- **Communication**: Radio signal reception
+- **Tariff Support**: Dual rate (day/night)
+- **Key Features**: Red button, black casing with white text
 
 ## Detailed Observations
-The meter has a clear LCD display showing consumption data. There is no evidence of separate rate displays or economy 7 functionality. The housing is light-colored plastic rather than the black metal typical of RTS meters.
+The separate black control box mounted alongside the main electricity meter serves as the Radio Teleswitch receiver. This device receives radio signals that control when your heating and hot water systems operate, typically switching between day and night rates automatically.
 
-## Recommendation
-This meter is **not** scheduled for replacement in the upcoming RTS phase-out. No action is required at this time.
+## Replacement Information
+**Important:** This RTS meter is scheduled to be phased out by 2027 as part of the national Radio Teleswitch Service decommissioning. The radio signal that controls these meters will be switched off.
+
+## Recommended Actions
+1. **Contact your energy supplier** to arrange for a replacement meter
+2. **Consider smart meter options** which offer similar time-of-use tariff capabilities
+3. **Review your current energy plan** as replacement may present opportunities for better tariffs
 
 *Note: This is a mock detailed report for testing purposes only.*` : undefined
       });
     }
-
+    
     const openai = new OpenAI({
       apiKey: apiKey
     });
@@ -229,8 +243,8 @@ In addition to the standard JSON response, include a "detailedReport" field with
             ],
           },
         ],
-        // Use correct parameter for o4-mini
-        max_completion_tokens: 800,
+        // Use model-appropriate token limits
+        max_completion_tokens: useDetailedModel ? 2000 : 800,
         response_format: { type: "json_object" },
       });
 
@@ -266,7 +280,9 @@ In addition to the standard JSON response, include a "detailedReport" field with
             certainty: certainty ?? 10, // Use normalized value, default to 10 if null
             confidence_score: certainty ?? 10, // Ensure both values match
             wasImageUpscaled: wasImageUpscaled,
-            detailedAnalysis: useDetailedModel
+            detailedAnalysis: useDetailedModel,
+            // Ensure the detailed report is properly captured if it exists in the response or undefined if not
+            detailedReport: rawResponse.detailedReport || undefined
           };
           
           // Determine the classification based on confidence thresholds
@@ -278,37 +294,43 @@ In addition to the standard JSON response, include a "detailedReport" field with
             analysisResult.needsBetterImage = false;
             
             // Change the result to "Unknown" if the certainty is too low
-            if (analysisResult.certainty < 50) {
+            // Don't do this for detailed analysis which should be more accurate and definitive
+            if (!useDetailedModel && analysisResult.certainty < 50) {
               analysisResult.result = "Unknown";
               analysisResult.explanation = "There might be evidence of an RTS meter, but the confidence is too low to make a definitive determination. " + (analysisResult.explanation || "");
             }
             // Boost confidence for RTS meters to prevent false negatives
-            else if (analysisResult.certainty < 70) {
+            else if (!useDetailedModel && analysisResult.certainty < 70) {
               analysisResult.certainty = Math.min(70, analysisResult.certainty + 20);
               analysisResult.confidence_score = analysisResult.certainty;
             }
           } else {
             // Similarly, if Not an RTS meter with very low confidence, label as "Unknown"
-            if (analysisResult.certainty < 50) {
+            // Don't do this for detailed analysis which should be more accurate
+            if (!useDetailedModel && analysisResult.certainty < 50) {
               analysisResult.result = "Unknown";
               analysisResult.explanation = "The image doesn't appear to show an RTS meter, but the confidence is too low to make a definitive determination. " + (analysisResult.explanation || "");
             }
             
-            // Check for image quality issues
-            const qualityCheck = detectImageQualityIssues(analysisResult);
-            if (qualityCheck.hasIssues) {
-              analysisResult.imageQualityIssue = true;
-              analysisResult.imageQualityFeedback = qualityCheck.feedback || "Please take a clearer photo of the meter.";
+            // Check for image quality issues - skip for detailed analysis which is more thorough
+            if (!useDetailedModel) {
+              const qualityCheck = detectImageQualityIssues(analysisResult);
+              if (qualityCheck.hasIssues) {
+                analysisResult.imageQualityIssue = true;
+                analysisResult.imageQualityFeedback = qualityCheck.feedback || "Please take a clearer photo of the meter.";
+              }
             }
             
             // If certainty is below 70%, mark as needing a better image
-            if (analysisResult.certainty < 70) {
+            // Skip for detailed analysis which is meant to be the final verdict
+            if (!useDetailedModel && analysisResult.certainty < 70) {
               analysisResult.needsBetterImage = true;
               analysisResult.imageQualityIssue = true;
               analysisResult.imageQualityFeedback = MORE_INFO_FEEDBACK;
             }
             // If certainty is between 70% and 85%, warn about image quality but show results
-            else if (analysisResult.certainty < 85) {
+            // Skip for detailed analysis which is meant to be the final verdict
+            else if (!useDetailedModel && analysisResult.certainty < 85) {
               analysisResult.imageQualityIssue = true;
               analysisResult.imageQualityFeedback = "A clearer photo would provide more accurate results.";
             }

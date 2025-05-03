@@ -908,8 +908,45 @@ export default function MeterUploadForm() {
                         </div>
                         <div className="p-4 bg-white max-h-96 overflow-y-auto">
                           <div className="prose prose-sm max-w-none prose-headings:text-yellow-900 prose-a:text-yellow-600">
-                            {/* Render markdown content safely */}
-                            <div dangerouslySetInnerHTML={{ __html: result.detailedReport.replace(/\n/g, '<br>') }} />
+                            {result.detailedReport.split('\n').map((line, i) => {
+                              // Handle headings
+                              if (line.startsWith('# ')) {
+                                return <h1 key={i} className="text-xl font-bold mt-4 mb-2 text-yellow-900">{line.substring(2)}</h1>;
+                              }
+                              if (line.startsWith('## ')) {
+                                return <h2 key={i} className="text-lg font-bold mt-3 mb-2 text-yellow-900">{line.substring(3)}</h2>;
+                              }
+                              if (line.startsWith('### ')) {
+                                return <h3 key={i} className="text-md font-bold mt-2 mb-1 text-yellow-900">{line.substring(4)}</h3>;
+                              }
+                              
+                              // Handle lists
+                              if (line.match(/^[0-9]+\. /)) {
+                                return <li key={i} className="ml-4 mb-1">{line.replace(/^[0-9]+\. /, '')}</li>;
+                              }
+                              if (line.startsWith('- ')) {
+                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                              }
+                              if (line.startsWith('* ')) {
+                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                              }
+                              
+                              // Handle bold and italics
+                              if (line.includes('**') || line.includes('*')) {
+                                const formattedLine = line
+                                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                  .replace(/\*(.*?)\*/g, '<em>$1</em>');
+                                return <div key={i} className="my-2" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
+                              }
+                              
+                              // Empty line creates paragraph break
+                              if (line.trim() === '') {
+                                return <div key={i} className="h-2"></div>;
+                              }
+                              
+                              // Default paragraph
+                              return <p key={i} className="my-1">{line}</p>;
+                            })}
                           </div>
                         </div>
                       </div>
@@ -1034,8 +1071,45 @@ export default function MeterUploadForm() {
                         </div>
                         <div className="p-4 bg-white max-h-96 overflow-y-auto">
                           <div className="prose prose-sm max-w-none prose-headings:text-blue-900 prose-a:text-blue-600">
-                            {/* Render markdown content safely */}
-                            <div dangerouslySetInnerHTML={{ __html: result.detailedReport.replace(/\n/g, '<br>') }} />
+                            {result.detailedReport.split('\n').map((line, i) => {
+                              // Handle headings
+                              if (line.startsWith('# ')) {
+                                return <h1 key={i} className="text-xl font-bold mt-4 mb-2 text-blue-900">{line.substring(2)}</h1>;
+                              }
+                              if (line.startsWith('## ')) {
+                                return <h2 key={i} className="text-lg font-bold mt-3 mb-2 text-blue-900">{line.substring(3)}</h2>;
+                              }
+                              if (line.startsWith('### ')) {
+                                return <h3 key={i} className="text-md font-bold mt-2 mb-1 text-blue-900">{line.substring(4)}</h3>;
+                              }
+                              
+                              // Handle lists
+                              if (line.match(/^[0-9]+\. /)) {
+                                return <li key={i} className="ml-4 mb-1">{line.replace(/^[0-9]+\. /, '')}</li>;
+                              }
+                              if (line.startsWith('- ')) {
+                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                              }
+                              if (line.startsWith('* ')) {
+                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                              }
+                              
+                              // Handle bold and italics
+                              if (line.includes('**') || line.includes('*')) {
+                                const formattedLine = line
+                                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                  .replace(/\*(.*?)\*/g, '<em>$1</em>');
+                                return <div key={i} className="my-2" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
+                              }
+                              
+                              // Empty line creates paragraph break
+                              if (line.trim() === '') {
+                                return <div key={i} className="h-2"></div>;
+                              }
+                              
+                              // Default paragraph
+                              return <p key={i} className="my-1">{line}</p>;
+                            })}
                           </div>
                         </div>
                       </div>
@@ -1160,8 +1234,45 @@ export default function MeterUploadForm() {
                         </div>
                         <div className="p-4 bg-white max-h-96 overflow-y-auto">
                           <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-a:text-gray-600">
-                            {/* Render markdown content safely */}
-                            <div dangerouslySetInnerHTML={{ __html: result.detailedReport.replace(/\n/g, '<br>') }} />
+                            {result.detailedReport.split('\n').map((line, i) => {
+                              // Handle headings
+                              if (line.startsWith('# ')) {
+                                return <h1 key={i} className="text-xl font-bold mt-4 mb-2 text-gray-900">{line.substring(2)}</h1>;
+                              }
+                              if (line.startsWith('## ')) {
+                                return <h2 key={i} className="text-lg font-bold mt-3 mb-2 text-gray-900">{line.substring(3)}</h2>;
+                              }
+                              if (line.startsWith('### ')) {
+                                return <h3 key={i} className="text-md font-bold mt-2 mb-1 text-gray-900">{line.substring(4)}</h3>;
+                              }
+                              
+                              // Handle lists
+                              if (line.match(/^[0-9]+\. /)) {
+                                return <li key={i} className="ml-4 mb-1">{line.replace(/^[0-9]+\. /, '')}</li>;
+                              }
+                              if (line.startsWith('- ')) {
+                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                              }
+                              if (line.startsWith('* ')) {
+                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                              }
+                              
+                              // Handle bold and italics
+                              if (line.includes('**') || line.includes('*')) {
+                                const formattedLine = line
+                                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                  .replace(/\*(.*?)\*/g, '<em>$1</em>');
+                                return <div key={i} className="my-2" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
+                              }
+                              
+                              // Empty line creates paragraph break
+                              if (line.trim() === '') {
+                                return <div key={i} className="h-2"></div>;
+                              }
+                              
+                              // Default paragraph
+                              return <p key={i} className="my-1">{line}</p>;
+                            })}
                           </div>
                         </div>
                       </div>
