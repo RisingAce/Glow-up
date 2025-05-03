@@ -1,27 +1,12 @@
-import type React from "react"
-import "./globals.css"
-import { Inter } from "next/font/google"
-import { ThemeProvider } from "@/components/theme-provider"
-import Script from "next/script"
-import type { Metadata } from 'next'
+import type { Metadata } from "next";
+import { Inter } from "next/font/google"; // Import the Inter function
+import Script from 'next/script'; // Import Script
+import "./globals.css";
+import React from 'react';
+import { ThemeProvider } from "@/components/theme-provider";
 
-// Service Worker Registration
-const serviceWorkerScript = `
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/sw.js').then(
-        function(registration) {
-          console.log('Service Worker registration successful with scope: ', registration.scope);
-        },
-        function(err) {
-          console.log('Service Worker registration failed: ', err);
-        }
-      );
-    });
-  }
-`;
-
-const inter = Inter({ subsets: ["latin"] })
+// Configure the Inter font
+const inter = Inter({ subsets: ["latin"] });
 
 // Vercel Analytics
 const VERCEL_ANALYTICS_ID = process.env.NEXT_PUBLIC_VERCEL_ANALYTICS_ID || '';
@@ -111,13 +96,15 @@ export default function RootLayout({
           }}
         />
         <script async src="/_vercel/insights/script.js"></script>
+
+        {/* Google AdSense Script */}
         <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7602339756703410"
           crossOrigin="anonymous"
-          strategy="afterInteractive"
+          strategy="afterInteractive" // Load after page becomes interactive
         />
-        <script dangerouslySetInnerHTML={{ __html: serviceWorkerScript }} />
+
         {/* JSON-LD structured data */}
         <script
           type="application/ld+json"
@@ -153,6 +140,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="twitter:image" content="https://www.checkyourmeter.co.uk/og-image.png" />
       </head>
       <body className={inter.className}>
         <ThemeProvider
