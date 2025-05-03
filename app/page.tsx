@@ -7,9 +7,15 @@ import ErrorBoundary from '@/components/error-boundary'
 export default function Home() {
   return (
     <main className="flex min-h-screen flex-col items-center bg-gradient-to-b from-blue-50 via-white to-slate-50">
-      <div className="w-full py-6 bg-blue-600 mb-8">
+      <div className="w-full py-3 bg-blue-600 mb-8">
         <div className="max-w-2xl mx-auto px-4 flex items-center justify-center">
-          <Zap className="h-7 w-7 text-white mr-3" />
+          <Image 
+            src="/Logo.PNG" 
+            alt="Check Your Meter Logo" 
+            width={40} 
+            height={40} 
+            className="mr-3 rounded-md"
+          />
           <h1 className="text-2xl font-bold text-white">Check Your Meter</h1>
         </div>
       </div>
@@ -66,8 +72,18 @@ export default function Home() {
       
       <footer className="w-full py-6 bg-gray-50 border-t border-gray-200">
         <div className="max-w-2xl mx-auto px-4 text-center">
+          <div className="flex items-center justify-center mb-3">
+            <Image 
+              src="/Logo.PNG" 
+              alt="Check Your Meter Logo" 
+              width={30} 
+              height={30} 
+              className="mr-2 rounded-md"
+            />
+            <span className="text-base font-medium text-gray-700">Check Your Meter</span>
+          </div>
           <p className="text-sm text-gray-500">
-            Check Your Meter • Helping UK households identify RTS meters
+            Helping UK households identify RTS meters that need replacement
           </p>
           <p className="text-xs text-gray-400 mt-2">
             This tool uses AI to analyze meter images but is not a substitute for professional advice

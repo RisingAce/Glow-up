@@ -750,8 +750,14 @@ export default function MeterUploadForm() {
             {/* Upload UI */}
             {!previewUrl && (
               <div className="space-y-4 text-center">
-                <div className="bg-blue-100 rounded-full p-3 mx-auto">
-                  <Upload className="h-6 w-6 text-blue-600" />
+                <div className="bg-blue-100 rounded-full p-2 mx-auto w-16 h-16 flex items-center justify-center">
+                  <Image 
+                    src="/Logo.PNG" 
+                    alt="Check Your Meter Logo" 
+                    width={40} 
+                    height={40} 
+                    className="rounded-md"
+                  />
                 </div>
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">Upload Meter Photo</h3>

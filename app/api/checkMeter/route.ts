@@ -149,7 +149,28 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         reasoning: "No actual analysis was performed as this is a mock response.",
         meterType: "Mock Meter",
         additionalInfo: "Please configure the OPENAI_API_KEY environment variable in your Vercel project.",
-        imageQualityIssue: false
+        imageQualityIssue: false,
+        detailedAnalysis: useDetailedModel,
+        detailedReport: useDetailedModel ? 
+          `# Detailed Mock Analysis Report
+          
+## Meter Identification
+This appears to be a standard electricity meter without RTS functionality. The meter displays clear digital readings and has a modern design typical of non-RTS meters.
+
+## Technical Specifications
+- **Meter Type**: Standard Digital
+- **Manufacturer**: Mock Manufacturer
+- **Model Number**: MOCK-2025
+- **Communication**: Standard RF (not Radio Teleswitch)
+- **Tariff Support**: Single rate only
+
+## Detailed Observations
+The meter has a clear LCD display showing consumption data. There is no evidence of separate rate displays or economy 7 functionality. The housing is light-colored plastic rather than the black metal typical of RTS meters.
+
+## Recommendation
+This meter is **not** scheduled for replacement in the upcoming RTS phase-out. No action is required at this time.
+
+*Note: This is a mock detailed report for testing purposes only.*` : undefined
       });
     }
 
