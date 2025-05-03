@@ -3,10 +3,14 @@ import "./globals.css"
 import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/components/theme-provider"
 import Script from "next/script"
+import type { Metadata } from 'next'
 
 const inter = Inter({ subsets: ["latin"] })
 
-export const metadata = {
+// Vercel Analytics
+const VERCEL_ANALYTICS_ID = process.env.NEXT_PUBLIC_VERCEL_ANALYTICS_ID || '';
+
+export const metadata: Metadata = {
   title: "Check Your Meter",
   description: "Upload a photo of your electricity meter to check if it's an RTS meter that needs replacement",
   generator: 'v0.dev',
@@ -46,10 +50,20 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  // ThemeProvider should wrap the children INSIDE the body tag
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Inline Vercel Analytics script */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+              window.va('init', '${VERCEL_ANALYTICS_ID}');
+              window.va('event', 'pageview');
+            `,
+          }}
+        />
+        <script async src="/_vercel/insights/script.js"></script>
         <Script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7602339756703410"

@@ -1049,13 +1049,13 @@ export default function MeterUploadForm() {
                               
                               // Handle lists
                               if (line.match(/^[0-9]+\. /)) {
-                                return <li key={i} className="ml-4 mb-1">{line.replace(/^[0-9]+\. /, '')}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.replace(/^[0-9]+\. /, '')}</li>;
                               }
                               if (line.startsWith('- ')) {
-                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.substring(2)}</li>;
                               }
                               if (line.startsWith('* ')) {
-                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.substring(2)}</li>;
                               }
                               
                               // Handle bold and italics
@@ -1063,7 +1063,7 @@ export default function MeterUploadForm() {
                                 const formattedLine = line
                                   .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                                   .replace(/\*(.*?)\*/g, '<em>$1</em>');
-                                return <div key={i} className="my-2" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
+                                return <div key={i} className="my-2 text-gray-800" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
                               }
                               
                               // Empty line creates paragraph break
@@ -1072,7 +1072,7 @@ export default function MeterUploadForm() {
                               }
                               
                               // Default paragraph
-                              return <p key={i} className="my-1">{line}</p>;
+                              return <p key={i} className="my-1 text-gray-800">{line}</p>;
                             })}
                           </div>
                         </div>
@@ -1245,13 +1245,13 @@ export default function MeterUploadForm() {
                               
                               // Handle lists
                               if (line.match(/^[0-9]+\. /)) {
-                                return <li key={i} className="ml-4 mb-1">{line.replace(/^[0-9]+\. /, '')}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.replace(/^[0-9]+\. /, '')}</li>;
                               }
                               if (line.startsWith('- ')) {
-                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.substring(2)}</li>;
                               }
                               if (line.startsWith('* ')) {
-                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.substring(2)}</li>;
                               }
                               
                               // Handle bold and italics
@@ -1259,7 +1259,7 @@ export default function MeterUploadForm() {
                                 const formattedLine = line
                                   .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                                   .replace(/\*(.*?)\*/g, '<em>$1</em>');
-                                return <div key={i} className="my-2" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
+                                return <div key={i} className="my-2 text-gray-800" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
                               }
                               
                               // Empty line creates paragraph break
@@ -1268,7 +1268,7 @@ export default function MeterUploadForm() {
                               }
                               
                               // Default paragraph
-                              return <p key={i} className="my-1">{line}</p>;
+                              return <p key={i} className="my-1 text-gray-800">{line}</p>;
                             })}
                           </div>
                         </div>
@@ -1441,13 +1441,13 @@ export default function MeterUploadForm() {
                               
                               // Handle lists
                               if (line.match(/^[0-9]+\. /)) {
-                                return <li key={i} className="ml-4 mb-1">{line.replace(/^[0-9]+\. /, '')}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.replace(/^[0-9]+\. /, '')}</li>;
                               }
                               if (line.startsWith('- ')) {
-                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.substring(2)}</li>;
                               }
                               if (line.startsWith('* ')) {
-                                return <li key={i} className="ml-4 mb-1">{line.substring(2)}</li>;
+                                return <li key={i} className="ml-4 mb-1 text-gray-800">{line.substring(2)}</li>;
                               }
                               
                               // Handle bold and italics
@@ -1455,7 +1455,7 @@ export default function MeterUploadForm() {
                                 const formattedLine = line
                                   .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
                                   .replace(/\*(.*?)\*/g, '<em>$1</em>');
-                                return <div key={i} className="my-2" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
+                                return <div key={i} className="my-2 text-gray-800" dangerouslySetInnerHTML={{ __html: formattedLine }} />;
                               }
                               
                               // Empty line creates paragraph break
@@ -1464,7 +1464,7 @@ export default function MeterUploadForm() {
                               }
                               
                               // Default paragraph
-                              return <p key={i} className="my-1">{line}</p>;
+                              return <p key={i} className="my-1 text-gray-800">{line}</p>;
                             })}
                           </div>
                         </div>
