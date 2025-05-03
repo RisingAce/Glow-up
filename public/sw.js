@@ -25,6 +25,12 @@ self.addEventListener('fetch', (event) => {
         if (response) {
           return response;
         }
+
+        // Don't cache POST requests or Vercel insights
+        if (event.request.method === 'POST' || event.request.url.includes('/_vercel/insights/')) {
+          return fetch(event.request);
+        }
+
         return fetch(event.request).then(
           (response) => {
             // Check if we received a valid response
