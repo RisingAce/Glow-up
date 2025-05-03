@@ -102,6 +102,16 @@ export default function MeterUploadForm() {
   const [imageQualityWarning, setImageQualityWarning] = useState<string | null>(null)
   const [detailedAnalysisLoading, setDetailedAnalysisLoading] = useState(false)
   
+  // Usage limit states
+  const [usageLimits, setUsageLimits] = useState<{
+    regularChecks: { used: number; limit: number; remaining: number };
+    detailedAnalysis: { used: number; limit: number; remaining: number };
+  }>({
+    regularChecks: { used: 0, limit: 3, remaining: 3 },
+    detailedAnalysis: { used: 0, limit: 1, remaining: 1 }
+  });
+  const [usageLimitExceeded, setUsageLimitExceeded] = useState<string | null>(null);
+  
   const [dragActive, setDragActive] = useState(false)
   const [analysisPhase, setAnalysisPhase] = useState<string | null>(null)
   
@@ -196,6 +206,12 @@ export default function MeterUploadForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || isLoading) return;
+    
+    // Check usage limits first
+    const canProceed = await checkUsageLimit('regular');
+    if (!canProceed) {
+      return;
+    }
 
     // Reset all state before starting
     setIsLoading(true);
@@ -608,6 +624,12 @@ export default function MeterUploadForm() {
   const requestDetailedAnalysis = async () => {
     if (!file || detailedAnalysisLoading) return;
     
+    // Check usage limits first
+    const canProceed = await checkUsageLimit('detailed');
+    if (!canProceed) {
+      return;
+    }
+    
     setDetailedAnalysisLoading(true);
     setAnalysisPhase('Preparing detailed analysis with advanced model');
     
@@ -647,6 +669,92 @@ export default function MeterUploadForm() {
       setAnalysisPhase(null);
     }
   };
+
+  // Fetch current usage limits on component mount
+  useEffect(() => {
+    fetchUsageLimits();
+  }, []);
+  
+  // Function to fetch current usage limits
+  const fetchUsageLimits = async () => {
+    try {
+      const response = await fetch('/api/usageLimit');
+      if (response.ok) {
+        const data = await response.json();
+        setUsageLimits(data);
+      }
+    } catch (error) {
+      console.error('Error fetching usage limits:', error);
+    }
+  };
+  
+  // Check if user has reached usage limits
+  const checkUsageLimit = async (type: 'regular' | 'detailed'): Promise<boolean> => {
+    try {
+      const response = await fetch('/api/usageLimit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ checkType: type })
+      });
+      
+      const data = await response.json();
+      setUsageLimits(data);
+      
+      if (!data.success) {
+        setUsageLimitExceeded(data.error);
+        toast({
+          title: "Usage Limit Reached",
+          description: data.error,
+          variant: "destructive",
+          duration: 5000,
+        });
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error checking usage limit:', error);
+      // Allow the operation to proceed if there's an error checking the limit
+      return true;
+    }
+  };
+
+  // Usage limit status component
+  const UsageLimitStatus = () => (
+    <div className="mt-4 text-xs text-gray-500">
+      <div className="flex justify-between items-center mb-1">
+        <span>Regular checks:</span>
+        <span className="font-medium">{usageLimits.regularChecks.used}/{usageLimits.regularChecks.limit} today</span>
+      </div>
+      <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
+        <div 
+          className="h-full rounded-full transition-all duration-300 ease-out bg-blue-500"
+          style={{ 
+            width: `${(usageLimits.regularChecks.used / usageLimits.regularChecks.limit) * 100}%`,
+            backgroundColor: usageLimits.regularChecks.remaining === 0 ? '#ef4444' : '#3b82f6' 
+          }}
+        ></div>
+      </div>
+      <div className="flex justify-between items-center mb-1">
+        <span>Detailed analysis:</span>
+        <span className="font-medium">{usageLimits.detailedAnalysis.used}/{usageLimits.detailedAnalysis.limit} today</span>
+      </div>
+      <div className="w-full bg-gray-200 rounded-full h-1.5">
+        <div 
+          className="h-full rounded-full transition-all duration-300 ease-out"
+          style={{ 
+            width: `${(usageLimits.detailedAnalysis.used / usageLimits.detailedAnalysis.limit) * 100}%`,
+            backgroundColor: usageLimits.detailedAnalysis.remaining === 0 ? '#ef4444' : '#3b82f6' 
+          }}
+        ></div>
+      </div>
+      <p className="mt-2 text-center text-gray-500">
+        Limits reset at midnight local time
+      </p>
+    </div>
+  );
 
   return (
     <div className="relative">
@@ -710,6 +818,21 @@ export default function MeterUploadForm() {
         </div>
       )}
 
+      {/* Usage Limit Exceeded Warning */}
+      {usageLimitExceeded && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 shadow-sm animate-in fade-in duration-300">
+          <div className="flex items-start">
+            <AlertTriangle className="h-5 w-5 text-red-500 mr-3 mt-0.5 flex-shrink-0" />
+            <div>
+              <h4 className="font-medium text-red-800 mb-1">Daily Limit Reached</h4>
+              <p className="text-sm text-red-700">
+                {usageLimitExceeded}. Limits will reset at midnight local time.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Main Upload Form */}
       <form 
         ref={formRef}
@@ -804,14 +927,18 @@ export default function MeterUploadForm() {
         
         {/* Submit button - only show if image is selected */}
         {previewUrl && !isLoading && (
-          <Button 
-            type="submit" 
-            className="mt-4 bg-blue-600 hover:bg-blue-700 transition-all duration-200"
-            disabled={isLoading || !file}
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            Analyze Meter
-          </Button>
+          <div className="mt-4 space-y-4">
+            <Button 
+              type="submit"
+              className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Analyze Meter
+            </Button>
+            
+            {/* Usage Limit Status */}
+            <UsageLimitStatus />
+          </div>
         )}
       </form>
 
@@ -906,7 +1033,7 @@ export default function MeterUploadForm() {
                             <h3 className="text-sm font-medium text-yellow-800">Detailed Analysis Report</h3>
                           </div>
                         </div>
-                        <div className="p-4 bg-white max-h-96 overflow-y-auto">
+                        <div className="p-4 bg-gray-50 max-h-96 overflow-y-auto">
                           <div className="prose prose-sm max-w-none prose-headings:text-yellow-900 prose-a:text-yellow-600">
                             {result.detailedReport.split('\n').map((line, i) => {
                               // Handle headings
@@ -953,19 +1080,41 @@ export default function MeterUploadForm() {
                     </div>
                   )}
                   
-                  {/* Detailed Analysis Button - Only show if not already detailed */}
+                  {/* Detailed Analysis Button - Only show if not already detailed and not exceeded limit */}
                   {!result.detailedAnalysis && !detailedAnalysisLoading && (
                     <div className="mt-2 pt-4 border-t border-yellow-200">
                       <Button 
                         onClick={requestDetailedAnalysis}
                         className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-700 hover:to-yellow-600 text-white"
+                        disabled={usageLimits.detailedAnalysis.remaining === 0}
                       >
                         <Sparkles className="h-4 w-4 mr-2" />
                         Get In-Depth Analysis with Advanced AI
                       </Button>
-                      <p className="text-xs text-center mt-2 text-yellow-600">
-                        Uses our most powerful model for detailed meter assessment
-                      </p>
+                      <div className="mt-3">
+                        <div className="flex justify-between items-center text-xs text-yellow-700">
+                          <span>Daily limit:</span>
+                          <span>{usageLimits.detailedAnalysis.used}/{usageLimits.detailedAnalysis.limit} used today</span>
+                        </div>
+                        <div className="w-full bg-yellow-200 rounded-full h-1.5 mt-1">
+                          <div 
+                            className="h-full bg-yellow-500 rounded-full transition-all duration-300 ease-out"
+                            style={{ 
+                              width: `${(usageLimits.detailedAnalysis.used / usageLimits.detailedAnalysis.limit) * 100}%`,
+                              backgroundColor: usageLimits.detailedAnalysis.remaining === 0 ? '#ef4444' : '#eab308' 
+                            }}
+                          ></div>
+                        </div>
+                        {usageLimits.detailedAnalysis.remaining === 0 ? (
+                          <p className="text-xs text-center mt-2 text-red-600">
+                            Daily limit reached. Try again tomorrow.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-center mt-2 text-yellow-600">
+                            Uses our most powerful model for detailed meter assessment
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                   
@@ -990,6 +1139,17 @@ export default function MeterUploadForm() {
                       <p className="text-sm text-gray-700">{result.additionalInfo}</p>
                     </div>
                   )}
+
+                  {/* Better image recommendation */}
+                  <div className="border rounded-lg p-4 bg-amber-50 border-amber-200">
+                    <div className="flex items-start">
+                      <Info className="h-5 w-5 text-amber-500 mr-3 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-medium text-amber-800 mb-1">Recommendation</h4>
+                        <p className="text-sm text-amber-700">Try taking another photo with better lighting and focus for a more conclusive result. If you're still unsure, consider contacting your energy supplier.</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1069,7 +1229,7 @@ export default function MeterUploadForm() {
                             <h3 className="text-sm font-medium text-blue-800">Detailed Analysis Report</h3>
                           </div>
                         </div>
-                        <div className="p-4 bg-white max-h-96 overflow-y-auto">
+                        <div className="p-4 bg-gray-50 max-h-96 overflow-y-auto">
                           <div className="prose prose-sm max-w-none prose-headings:text-blue-900 prose-a:text-blue-600">
                             {result.detailedReport.split('\n').map((line, i) => {
                               // Handle headings
@@ -1116,19 +1276,41 @@ export default function MeterUploadForm() {
                     </div>
                   )}
                   
-                  {/* Detailed Analysis Button - Only show if not already detailed */}
+                  {/* Detailed Analysis Button - Only show if not already detailed and not exceeded limit */}
                   {!result.detailedAnalysis && !detailedAnalysisLoading && (
                     <div className="mt-2 pt-4 border-t border-blue-200">
                       <Button 
                         onClick={requestDetailedAnalysis}
                         className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white"
+                        disabled={usageLimits.detailedAnalysis.remaining === 0}
                       >
                         <Sparkles className="h-4 w-4 mr-2" />
                         Get In-Depth Analysis with Advanced AI
                       </Button>
-                      <p className="text-xs text-center mt-2 text-blue-600">
-                        Uses our most powerful model for detailed meter assessment
-                      </p>
+                      <div className="mt-3">
+                        <div className="flex justify-between items-center text-xs text-blue-700">
+                          <span>Daily limit:</span>
+                          <span>{usageLimits.detailedAnalysis.used}/{usageLimits.detailedAnalysis.limit} used today</span>
+                        </div>
+                        <div className="w-full bg-blue-200 rounded-full h-1.5 mt-1">
+                          <div 
+                            className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
+                            style={{ 
+                              width: `${(usageLimits.detailedAnalysis.used / usageLimits.detailedAnalysis.limit) * 100}%`,
+                              backgroundColor: usageLimits.detailedAnalysis.remaining === 0 ? '#ef4444' : '#3b82f6' 
+                            }}
+                          ></div>
+                        </div>
+                        {usageLimits.detailedAnalysis.remaining === 0 ? (
+                          <p className="text-xs text-center mt-2 text-red-600">
+                            Daily limit reached. Try again tomorrow.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-center mt-2 text-blue-600">
+                            Uses our most powerful model for detailed meter assessment
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                   
@@ -1153,6 +1335,17 @@ export default function MeterUploadForm() {
                       <p className="text-sm text-gray-700">{result.additionalInfo}</p>
                     </div>
                   )}
+
+                  {/* Better image recommendation */}
+                  <div className="border rounded-lg p-4 bg-amber-50 border-amber-200">
+                    <div className="flex items-start">
+                      <Info className="h-5 w-5 text-amber-500 mr-3 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-medium text-amber-800 mb-1">Recommendation</h4>
+                        <p className="text-sm text-amber-700">Try taking another photo with better lighting and focus for a more conclusive result. If you're still unsure, consider contacting your energy supplier.</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1232,7 +1425,7 @@ export default function MeterUploadForm() {
                             <h3 className="text-sm font-medium text-gray-800">Detailed Analysis Report</h3>
                           </div>
                         </div>
-                        <div className="p-4 bg-white max-h-96 overflow-y-auto">
+                        <div className="p-4 bg-gray-50 max-h-96 overflow-y-auto">
                           <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-a:text-gray-600">
                             {result.detailedReport.split('\n').map((line, i) => {
                               // Handle headings
@@ -1279,19 +1472,41 @@ export default function MeterUploadForm() {
                     </div>
                   )}
                   
-                  {/* Detailed Analysis Button - Only show if not already detailed */}
+                  {/* Detailed Analysis Button - Only show if not already detailed and not exceeded limit */}
                   {!result.detailedAnalysis && !detailedAnalysisLoading && (
                     <div className="mt-2 pt-4 border-t border-gray-200">
                       <Button 
                         onClick={requestDetailedAnalysis}
                         className="w-full bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-700 hover:to-gray-600 text-white"
+                        disabled={usageLimits.detailedAnalysis.remaining === 0}
                       >
                         <Sparkles className="h-4 w-4 mr-2" />
                         Get In-Depth Analysis with Advanced AI
                       </Button>
-                      <p className="text-xs text-center mt-2 text-gray-600">
-                        Uses our most powerful model for detailed meter assessment
-                      </p>
+                      <div className="mt-3">
+                        <div className="flex justify-between items-center text-xs text-gray-700">
+                          <span>Daily limit:</span>
+                          <span>{usageLimits.detailedAnalysis.used}/{usageLimits.detailedAnalysis.limit} used today</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                          <div 
+                            className="h-full bg-gray-500 rounded-full transition-all duration-300 ease-out"
+                            style={{ 
+                              width: `${(usageLimits.detailedAnalysis.used / usageLimits.detailedAnalysis.limit) * 100}%`,
+                              backgroundColor: usageLimits.detailedAnalysis.remaining === 0 ? '#ef4444' : '#6b7280' 
+                            }}
+                          ></div>
+                        </div>
+                        {usageLimits.detailedAnalysis.remaining === 0 ? (
+                          <p className="text-xs text-center mt-2 text-red-600">
+                            Daily limit reached. Try again tomorrow.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-center mt-2 text-gray-600">
+                            Uses our most powerful model for detailed meter assessment
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                   
