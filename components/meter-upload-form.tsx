@@ -254,13 +254,10 @@ export default function MeterUploadForm() {
       if (confidence < 0.80) {
         // Confidence too low - require a better image
         const feedback = analysis.imageQualityFeedback || MORE_INFO_FEEDBACK;
-        setResult({ 
-          ...analysis, // Keep other analysis data if needed
-          needsBetterImage: true, 
-          imageQualityFeedback: feedback
-        });
+        // Don't set result, only set the warning message to trigger BetterImageNeeded component
+        setResult(null);
+        setImageQualityWarning(feedback);
         setErrorMessage(null);
-        setImageQualityWarning(null);
       } else if (confidence < 0.90) {
         // Moderate confidence - show result with a warning
         setResult({ ...analysis, needsBetterImage: false }); // Ensure needsBetterImage is false
