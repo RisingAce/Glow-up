@@ -97,12 +97,11 @@ export default function RootLayout({
         />
         <script async src="/_vercel/insights/script.js"></script>
 
-        {/* Google AdSense Script */}
-        <Script
+        {/* Google AdSense Script - Using direct script tag instead of Next.js Script component */}
+        <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7602339756703410"
           crossOrigin="anonymous"
-          strategy="afterInteractive" // Load after page becomes interactive
         />
 
         {/* JSON-LD structured data */}
