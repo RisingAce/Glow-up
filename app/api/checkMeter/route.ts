@@ -87,14 +87,52 @@ function detectImageQualityIssues(response: any): { hasIssues: boolean, feedback
   return { hasIssues: false, feedback: null };
 }
 
+// Helper function to normalize confidence values to the 10-100 range
+function normalizeConfidenceValue(value: any): number {
+  // If not a number or undefined, return minimum confidence of 10
+  if (value === undefined || value === null || typeof value !== 'number') {
+    return 10;
+  }
+  
+  // Convert to number explicitly if it's a string or other type
+  const numValue = Number(value);
+  
+  // Handle values in thousands (e.g., 8500)
+  if (numValue >= 1000) {
+    return Math.min(100, Math.round(numValue / 100));
+  }
+  
+  // Handle decimal values (0.85 → 85%)
+  if (numValue > 0 && numValue <= 1) {
+    return Math.round(numValue * 100);
+  }
+  
+  // For values outside reasonable range (101-999), scale them down
+  if (numValue > 100 && numValue < 1000) {
+    return 100; // Cap at 100%
+  }
+  
+  // Values already in proper range (10-100)
+  return Math.min(100, Math.max(10, Math.round(numValue)));
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const debugInfo: any[] = [];
   let formData: FormData;
   let modelUsed: string = "o4-mini";
   let wasImageUpscaled = false;
+  let useDetailedModel = false;
   
   try {
     formData = await request.formData();
+    
+    // Check if this is a request for a detailed analysis with o3 model
+    const detailedAnalysisParam = formData.get("detailedAnalysis");
+    if (detailedAnalysisParam === "true") {
+      modelUsed = "o3";
+      useDetailedModel = true;
+      debugInfo.push({ step: "using_detailed_o3_model" });
+    }
     
     // Get API key from environment variables or fall back to a mock response for testing
     const apiKey = process.env.OPENAI_API_KEY;
@@ -136,15 +174,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const dataURI = `data:${image.type};base64,${fileBase64}`;
     debugInfo.push({ step: "image_converted_to_base64", type: image.type });
 
-    // Analyze the image with o4-mini model
-    debugInfo.push({ step: "analyzing_with_o4mini", model: modelUsed });
+    // Analyze the image with selected model
+    debugInfo.push({ step: "analyzing_with_model", model: modelUsed });
     
     try {
       // Make the API call to OpenAI
+      let promptToUse = analysisPrompt;
+      
+      // For detailed analysis, add more instructions to generate a comprehensive report
+      if (useDetailedModel) {
+        promptToUse = `${analysisPrompt}
+        
+ADDITIONAL INSTRUCTIONS FOR DETAILED ANALYSIS:
+As this is a detailed analysis request, please provide a more comprehensive report, including:
+1. A thorough examination of all meter components visible in the image
+2. Specific details about manufacturing markings, model numbers, and utility company information if visible
+3. More detailed explanation about how the meter works and its specific capabilities
+4. Recommendations for the user based on the meter type (economy plans, replacement options, etc.)
+5. Any other information that would be valuable to someone who wants to understand their meter in depth
+
+In addition to the standard JSON response, include a "detailedReport" field with a comprehensive, well-formatted markdown report that the user can read to understand their meter in detail.
+`;
+      }
+      
       const analysisResponse = await openai.chat.completions.create({
         model: modelUsed,
         messages: [
-          { role: "system", content: analysisPrompt },
+          { role: "system", content: promptToUse },
           {
             role: "user",
             content: [
@@ -165,49 +221,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       debugInfo.push({ step: "received_analysis", content });
       
-      // Parse the response
-      let analysisResult: MeterAnalysisResult = { result: "Unknown" };
+      // Parse the OpenAI response
+      let analysisResult: MeterAnalysisResult = { 
+        result: "Unknown", 
+        certainty: 10,
+        confidence_score: 10
+      };
 
       if (content && content.trim().startsWith("{")) {
         try {
-          analysisResult = JSON.parse(content) as MeterAnalysisResult;
+          // Parse the OpenAI response
+          const rawResponse = JSON.parse(content);
           
-          // Ensure certainty is never 0 (minimum 10%)
-          if (!analysisResult.certainty || analysisResult.certainty === 0) {
-            analysisResult.certainty = 10;
-          }
+          // Format confidence values before assigning to analysisResult
+          // If certainty is missing or 0, set to 10%
+          const certainty = (!rawResponse.certainty || rawResponse.certainty === 0) 
+            ? 10 
+            : normalizeConfidenceValue(rawResponse.certainty);
           
-          // Normalize certainty to a value between 10-100
-          // First check if it's potentially in thousands (e.g., 8500 instead of 85)
-          if (analysisResult.certainty > 100) {
-            // If over 100, we'll assume it needs to be normalized to 10-100 range
-            // Divide by 100 if it's in thousands
-            if (analysisResult.certainty >= 1000) {
-              analysisResult.certainty = Math.round(analysisResult.certainty / 100);
-            } else {
-              analysisResult.certainty = 100; // Cap at 100% for any other over-limit values
-            }
-          }
-          
-          // Convert confidence_score to a percentage if it's in decimal format (0-1 range)
-          if (analysisResult.confidence_score !== undefined) {
-            if (analysisResult.confidence_score <= 1) {
-              // Convert from decimal to percentage (0.75 → 75)
-              analysisResult.confidence_score = analysisResult.confidence_score * 100;
-            }
-            
-            // Normalize confidence_score if it's in thousands
-            if (analysisResult.confidence_score > 100) {
-              if (analysisResult.confidence_score >= 1000) {
-                analysisResult.confidence_score = Math.round(analysisResult.confidence_score / 100);
-              } else {
-                analysisResult.confidence_score = 100;
-              }
-            }
-          } else {
-            // If no confidence_score exists, use certainty
-            analysisResult.confidence_score = analysisResult.certainty;
-          }
+          // Create a properly normalized result object
+          analysisResult = {
+            ...rawResponse,
+            certainty: certainty ?? 10, // Use normalized value, default to 10 if null
+            confidence_score: certainty ?? 10, // Ensure both values match
+            wasImageUpscaled: wasImageUpscaled,
+            detailedAnalysis: useDetailedModel
+          };
           
           // Determine the classification based on confidence thresholds
           // If RTS meter with very low confidence, label as "Unknown"
@@ -225,6 +264,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             // Boost confidence for RTS meters to prevent false negatives
             else if (analysisResult.certainty < 70) {
               analysisResult.certainty = Math.min(70, analysisResult.certainty + 20);
+              analysisResult.confidence_score = analysisResult.certainty;
             }
           } else {
             // Similarly, if Not an RTS meter with very low confidence, label as "Unknown"
@@ -241,13 +281,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             }
             
             // If certainty is below 70%, mark as needing a better image
-            if (analysisResult.certainty && analysisResult.certainty < 70) {
+            if (analysisResult.certainty < 70) {
               analysisResult.needsBetterImage = true;
               analysisResult.imageQualityIssue = true;
               analysisResult.imageQualityFeedback = MORE_INFO_FEEDBACK;
             }
             // If certainty is between 70% and 85%, warn about image quality but show results
-            else if (analysisResult.certainty && analysisResult.certainty < 85) {
+            else if (analysisResult.certainty < 85) {
               analysisResult.imageQualityIssue = true;
               analysisResult.imageQualityFeedback = "A clearer photo would provide more accurate results.";
             }

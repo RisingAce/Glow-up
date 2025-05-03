@@ -100,6 +100,7 @@ export default function MeterUploadForm() {
   const [result, setResult] = useState<MeterAnalysisResult | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [imageQualityWarning, setImageQualityWarning] = useState<string | null>(null)
+  const [detailedAnalysisLoading, setDetailedAnalysisLoading] = useState(false)
   
   const [dragActive, setDragActive] = useState(false)
   const [analysisPhase, setAnalysisPhase] = useState<string | null>(null)
@@ -298,8 +299,8 @@ export default function MeterUploadForm() {
       
       // Default certainty displayed will be the higher of the two (or just the one we have)
       const displayCertainty = Math.max(
-        enhancedConfidence ? Math.round(enhancedConfidence * 100) : 0,
-        originalConfidence ? Math.round(originalConfidence * 100) : 0
+        enhancedConfidence ? Math.round(enhancedConfidence) : 0,
+        originalConfidence ? Math.round(originalConfidence) : 0
       );
       
       // Log for debugging
@@ -366,7 +367,7 @@ export default function MeterUploadForm() {
       } else if (displayCertainty < 89) {
         if (wasEnhanced) {
           const improvementText = originalConfidence > 0 
-            ? ` (improved from ${Math.round(originalConfidence * 100)}%)`
+            ? ` (improved from ${Math.round(originalConfidence)}%)`
             : '';
           setImageQualityWarning(`Low confidence (${displayCertainty}%${improvementText}). Results may be less reliable with this image quality.`);
         } else {
@@ -374,7 +375,7 @@ export default function MeterUploadForm() {
         }
       } else if (displayCertainty < 95) {
         if (wasEnhanced && originalConfidence > 0) {
-          setImageQualityWarning(`Moderate confidence (${displayCertainty}%, improved from ${Math.round(originalConfidence * 100)}%). Results should be reasonably accurate.`);
+          setImageQualityWarning(`Moderate confidence (${displayCertainty}%, improved from ${Math.round(originalConfidence)}%). Results should be reasonably accurate.`);
         } else {
           setImageQualityWarning(`Moderate confidence (${displayCertainty}%). Results should be reasonably accurate.`);
         }
@@ -541,6 +542,51 @@ export default function MeterUploadForm() {
     return imageData;
   };
 
+  // --- Confidence Score Utilities ---
+  const normalizeConfidenceValue = (certainty: number): number => {
+    // Handle values in thousands (e.g., 8500)
+    if (certainty >= 1000) {
+      return Math.min(100, Math.round(certainty / 100));
+    }
+    
+    // Handle decimal values (0.85 → 85%)
+    if (certainty > 0 && certainty <= 1) {
+      return Math.round(certainty * 100);
+    }
+    
+    // Values in 101-999 range
+    if (certainty > 100 && certainty < 1000) {
+      return 100; // Cap at 100%
+    }
+    
+    // Values already in proper range (10-100)
+    return Math.min(100, Math.max(10, Math.round(certainty)));
+  }
+
+  const getCertaintyColor = (certainty: number) => {
+    const normalizedCertainty = normalizeConfidenceValue(certainty);
+    if (normalizedCertainty >= 90) return "text-green-600"
+    if (normalizedCertainty >= 75) return "text-blue-600"
+    if (normalizedCertainty >= 60) return "text-amber-600"
+    return "text-red-600"
+  }
+
+  const getCertaintyBg = (certainty: number) => {
+    const normalizedCertainty = normalizeConfidenceValue(certainty);
+    if (normalizedCertainty >= 90) return "bg-green-500"
+    if (normalizedCertainty >= 75) return "bg-blue-500"
+    if (normalizedCertainty >= 60) return "bg-amber-500"
+    return "bg-red-500"
+  }
+
+  const getCertaintyLabel = (certainty: number) => {
+    const normalizedCertainty = normalizeConfidenceValue(certainty);
+    if (normalizedCertainty >= 90) return "High Certainty"
+    if (normalizedCertainty >= 75) return "Moderate Certainty"
+    if (normalizedCertainty >= 60) return "Low Certainty"
+    return "Very Uncertain"
+  }
+
   // --- Reset Function ---
   const handleReset = () => {
     setFile(null)
@@ -548,38 +594,76 @@ export default function MeterUploadForm() {
     setResult(null)
     setErrorMessage(null)
     setImageQualityWarning(null)
+    setDetailedAnalysisLoading(false)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const getCertaintyColor = (certainty: number) => {
-    if (certainty >= 90) return "text-green-600"
-    if (certainty >= 75) return "text-blue-600"
-    if (certainty >= 60) return "text-amber-600"
-    return "text-red-600"
-  }
-
-  const getCertaintyBg = (certainty: number) => {
-    if (certainty >= 90) return "bg-green-500"
-    if (certainty >= 75) return "bg-blue-500"
-    if (certainty >= 60) return "bg-amber-500"
-    return "bg-red-500"
-  }
-
-  const getCertaintyLabel = (certainty: number) => {
-    if (certainty >= 90) return "High Certainty"
-    if (certainty >= 75) return "Moderate Certainty"
-    if (certainty >= 60) return "Low Certainty"
-    return "Very Uncertain"
-  }
-  
   const triggerFileInput = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click();
     }
   };
 
+  // Function to request a detailed analysis with o3 model
+  const requestDetailedAnalysis = async () => {
+    if (!file || detailedAnalysisLoading) return;
+    
+    setDetailedAnalysisLoading(true);
+    setAnalysisPhase('Preparing detailed analysis with advanced model');
+    
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('detailedAnalysis', 'true');
+      
+      const response = await fetch('/api/checkMeter', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to get detailed analysis');
+      }
+      
+      const detailedResult: MeterAnalysisResult = await response.json();
+      setResult(detailedResult);
+      
+      toast({
+        title: "Detailed Analysis Complete",
+        description: "We've analyzed your meter in depth using our advanced model.",
+        duration: 5000,
+      });
+      
+    } catch (error: any) {
+      console.error("Detailed analysis error:", error);
+      toast({
+        title: "Analysis Failed",
+        description: error?.message || "Could not complete the detailed analysis. Please try again.",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setDetailedAnalysisLoading(false);
+      setAnalysisPhase(null);
+    }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="relative">
+      {/* Whole Meter Area Warning Notice - Always visible */}
+      <div className="mb-6 bg-amber-50 border border-amber-200 rounded-lg p-4 shadow-sm">
+        <div className="flex items-start">
+          <AlertTriangle className="h-5 w-5 text-amber-500 mr-3 mt-0.5 flex-shrink-0" />
+          <div>
+            <h4 className="font-medium text-amber-800 mb-1">Important: Capture Your Entire Meter Area</h4>
+            <p className="text-sm text-amber-700">
+              For the most accurate results, please take a photo showing your <strong>complete meter installation area</strong>, 
+              not just the meter itself. Include any black boxes, buttons, or connected devices around your meter.
+            </p>
+          </div>
+        </div>
+      </div>
+      
       {/* Error Message */}
       {errorMessage && (
         <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 mb-4 animate-in fade-in duration-300">
@@ -751,10 +835,7 @@ export default function MeterUploadForm() {
                   
                   {result.certainty !== undefined && (
                     <Badge variant="default" className="ml-2 bg-yellow-100 text-yellow-800 border-yellow-300">
-                      {result.certainty}% {result.certainty > 90 ? "Confident" : "Certainty"}
-                      {result.original_confidence_score !== undefined && (
-                        <span className="text-xs ml-1">(from {Math.round(result.original_confidence_score * 100)}%)</span>
-                      )}
+                      {result.certainty}% Certainty
                     </Badge>
                   )}
                 </div>
@@ -780,7 +861,9 @@ export default function MeterUploadForm() {
                     <div className="pt-2 border-t border-yellow-100 mt-4">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-600">Confidence Score:</span>
-                        <span className={`font-medium ${getCertaintyColor(result.certainty)}`}>{result.certainty}%</span>
+                        <span className={`font-medium ${getCertaintyColor(result.certainty)}`}>
+                          {result.certainty}%
+                        </span>
                       </div>
                       <div className="mt-1.5 bg-gray-200 rounded-full h-2 overflow-hidden">
                         <div 
@@ -807,6 +890,56 @@ export default function MeterUploadForm() {
                     </Accordion>
                   )}
                   
+                  {/* Detailed Report Section - Only show if it exists */}
+                  {result.detailedReport && (
+                    <div className="mt-4">
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="bg-yellow-100 px-4 py-2 border-b border-yellow-200">
+                          <div className="flex items-center">
+                            <Sparkles className="h-4 w-4 text-yellow-600 mr-2" />
+                            <h3 className="text-sm font-medium text-yellow-800">Detailed Analysis Report</h3>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-white max-h-96 overflow-y-auto">
+                          <div className="prose prose-sm max-w-none prose-headings:text-yellow-900 prose-a:text-yellow-600">
+                            {/* Render markdown content safely */}
+                            <div dangerouslySetInnerHTML={{ __html: result.detailedReport.replace(/\n/g, '<br>') }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Detailed Analysis Button - Only show if not already detailed */}
+                  {!result.detailedAnalysis && !detailedAnalysisLoading && (
+                    <div className="mt-2 pt-4 border-t border-yellow-200">
+                      <Button 
+                        onClick={requestDetailedAnalysis}
+                        className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-700 hover:to-yellow-600 text-white"
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Get In-Depth Analysis with Advanced AI
+                      </Button>
+                      <p className="text-xs text-center mt-2 text-yellow-600">
+                        Uses our most powerful model for detailed meter assessment
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Loading indicator for detailed analysis */}
+                  {detailedAnalysisLoading && (
+                    <div className="mt-4 pt-4 border-t border-yellow-200">
+                      <div className="flex flex-col items-center justify-center p-4">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <Loader2 className="h-5 w-5 text-yellow-600 animate-spin" />
+                          <span className="text-sm font-medium text-yellow-800">{analysisPhase || "Analyzing with advanced model..."}</span>
+                        </div>
+                        <Progress value={45} className="w-full h-1.5 bg-yellow-200" />
+                        <p className="text-xs text-yellow-600 mt-2">This may take a little longer as we're using our most detailed model</p>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Any additional info */}
                   {result.additionalInfo && (
                     <div className="border rounded-lg p-4 bg-yellow-50/30">
@@ -818,7 +951,7 @@ export default function MeterUploadForm() {
               </CardContent>
             </Card>
           ) : result.result === "Not an RTS meter" ? (
-            <Card className="border-blue-300 shadow-sm">
+            <Card className="border-blue-300 bg-blue-50 overflow-hidden">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
@@ -828,10 +961,7 @@ export default function MeterUploadForm() {
                   
                   {result.certainty !== undefined && (
                     <Badge variant="default" className="ml-2">
-                      {result.certainty}% {result.certainty > 90 ? "Confident" : "Certainty"}
-                      {result.original_confidence_score !== undefined && (
-                        <span className="text-xs ml-1">(from {Math.round(result.original_confidence_score * 100)}%)</span>
-                      )}
+                      {result.certainty}% Certainty
                     </Badge>
                   )}
                 </div>
@@ -857,7 +987,9 @@ export default function MeterUploadForm() {
                     <div className="pt-2 border-t border-blue-100 mt-4">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-600">Confidence Score:</span>
-                        <span className={`font-medium ${getCertaintyColor(result.certainty)}`}>{result.certainty}%</span>
+                        <span className={`font-medium ${getCertaintyColor(result.certainty)}`}>
+                          {result.certainty}%
+                        </span>
                       </div>
                       <div className="mt-1.5 bg-gray-200 rounded-full h-2 overflow-hidden">
                         <div 
@@ -884,6 +1016,56 @@ export default function MeterUploadForm() {
                     </Accordion>
                   )}
                   
+                  {/* Detailed Report Section - Only show if it exists */}
+                  {result.detailedReport && (
+                    <div className="mt-4">
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="bg-blue-100 px-4 py-2 border-b border-blue-200">
+                          <div className="flex items-center">
+                            <Sparkles className="h-4 w-4 text-blue-600 mr-2" />
+                            <h3 className="text-sm font-medium text-blue-800">Detailed Analysis Report</h3>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-white max-h-96 overflow-y-auto">
+                          <div className="prose prose-sm max-w-none prose-headings:text-blue-900 prose-a:text-blue-600">
+                            {/* Render markdown content safely */}
+                            <div dangerouslySetInnerHTML={{ __html: result.detailedReport.replace(/\n/g, '<br>') }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Detailed Analysis Button - Only show if not already detailed */}
+                  {!result.detailedAnalysis && !detailedAnalysisLoading && (
+                    <div className="mt-2 pt-4 border-t border-blue-200">
+                      <Button 
+                        onClick={requestDetailedAnalysis}
+                        className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white"
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Get In-Depth Analysis with Advanced AI
+                      </Button>
+                      <p className="text-xs text-center mt-2 text-blue-600">
+                        Uses our most powerful model for detailed meter assessment
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Loading indicator for detailed analysis */}
+                  {detailedAnalysisLoading && (
+                    <div className="mt-4 pt-4 border-t border-blue-200">
+                      <div className="flex flex-col items-center justify-center p-4">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+                          <span className="text-sm font-medium text-blue-800">{analysisPhase || "Analyzing with advanced model..."}</span>
+                        </div>
+                        <Progress value={45} className="w-full h-1.5 bg-blue-200" />
+                        <p className="text-xs text-blue-600 mt-2">This may take a little longer as we're using our most detailed model</p>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Any additional info */}
                   {result.additionalInfo && (
                     <div className="border rounded-lg p-4 bg-blue-50/30">
@@ -894,8 +1076,8 @@ export default function MeterUploadForm() {
                 </div>
               </CardContent>
             </Card>
-          ) : result.result === "Unknown" ? (
-            <Card className="border-gray-300 shadow-sm">
+          ) : (
+            <Card className="border-gray-300 bg-gray-50 overflow-hidden">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
@@ -931,7 +1113,9 @@ export default function MeterUploadForm() {
                     <div className="pt-2 border-t border-gray-100 mt-4">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-gray-600">Confidence Score:</span>
-                        <span className="font-medium text-gray-700">{result.certainty}%</span>
+                        <span className="font-medium text-gray-700">
+                          {result.certainty}%
+                        </span>
                       </div>
                       <div className="mt-1.5 bg-gray-200 rounded-full h-2 overflow-hidden">
                         <div 
@@ -958,6 +1142,56 @@ export default function MeterUploadForm() {
                     </Accordion>
                   )}
                   
+                  {/* Detailed Report Section - Only show if it exists */}
+                  {result.detailedReport && (
+                    <div className="mt-4">
+                      <div className="border rounded-lg overflow-hidden">
+                        <div className="bg-gray-100 px-4 py-2 border-b border-gray-200">
+                          <div className="flex items-center">
+                            <Sparkles className="h-4 w-4 text-gray-600 mr-2" />
+                            <h3 className="text-sm font-medium text-gray-800">Detailed Analysis Report</h3>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-white max-h-96 overflow-y-auto">
+                          <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-a:text-gray-600">
+                            {/* Render markdown content safely */}
+                            <div dangerouslySetInnerHTML={{ __html: result.detailedReport.replace(/\n/g, '<br>') }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Detailed Analysis Button - Only show if not already detailed */}
+                  {!result.detailedAnalysis && !detailedAnalysisLoading && (
+                    <div className="mt-2 pt-4 border-t border-gray-200">
+                      <Button 
+                        onClick={requestDetailedAnalysis}
+                        className="w-full bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-700 hover:to-gray-600 text-white"
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Get In-Depth Analysis with Advanced AI
+                      </Button>
+                      <p className="text-xs text-center mt-2 text-gray-600">
+                        Uses our most powerful model for detailed meter assessment
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Loading indicator for detailed analysis */}
+                  {detailedAnalysisLoading && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="flex flex-col items-center justify-center p-4">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <Loader2 className="h-5 w-5 text-gray-600 animate-spin" />
+                          <span className="text-sm font-medium text-gray-800">{analysisPhase || "Analyzing with advanced model..."}</span>
+                        </div>
+                        <Progress value={45} className="w-full h-1.5 bg-gray-200" />
+                        <p className="text-xs text-gray-600 mt-2">This may take a little longer as we're using our most detailed model</p>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Any additional info */}
                   {result.additionalInfo && (
                     <div className="border rounded-lg p-4 bg-gray-50/30">
@@ -979,8 +1213,6 @@ export default function MeterUploadForm() {
                 </div>
               </CardContent>
             </Card>
-          ) : (
-            <></>
           )}
         </motion.div>
       )}
