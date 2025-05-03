@@ -4,6 +4,7 @@ import Script from 'next/script'; // Import Script
 import "./globals.css";
 import React from 'react';
 import { ThemeProvider } from "@/components/theme-provider";
+import AdSense from "@/components/AdSense"; // Import AdSense component
 
 // Configure the Inter font
 const inter = Inter({ subsets: ["latin"] });
@@ -97,12 +98,7 @@ export default function RootLayout({
         />
         <script async src="/_vercel/insights/script.js"></script>
 
-        {/* Google AdSense Script - Using direct script tag instead of Next.js Script component */}
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7602339756703410"
-          crossOrigin="anonymous"
-        />
+        {/* Google AdSense Script is now handled by the AdSense component */}
 
         {/* JSON-LD structured data */}
         <script
@@ -148,6 +144,8 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          {/* AdSense component to load the script client-side */}
+          <AdSense />
           {children}
         </ThemeProvider>
       </body>
