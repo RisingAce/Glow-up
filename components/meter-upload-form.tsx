@@ -958,7 +958,7 @@ export default function MeterUploadForm() {
           className="mt-8 space-y-6"
         >
           {result.result === "RTS meter" ? (
-            <Card className="border-yellow-300 shadow-sm">
+            <Card className="border-yellow-300 shadow-sm bg-yellow-50">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
