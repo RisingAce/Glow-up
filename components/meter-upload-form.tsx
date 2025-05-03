@@ -8,7 +8,6 @@ import {
   RefreshCw, 
   CheckCircle, 
   XCircle, 
-  Camera, 
   Upload, 
   X, 
   AlertTriangle, 
@@ -49,11 +48,9 @@ import { MeterAnalysisResult } from "../types/meter-types"
 
 const MORE_INFO_FEEDBACK = "Please take a clearer photo of the meter, ensuring the entire meter is visible and in focus.";
 
-const BetterImageNeeded = ({ message, onReset, hasCamera, onStartCamera }: { 
+const BetterImageNeeded = ({ message, onReset }: { 
   message: string; 
   onReset: () => void;
-  hasCamera: boolean;
-  onStartCamera: () => void;
 }) => (
   <motion.div
     initial={{ opacity: 0, y: 10 }}
@@ -82,15 +79,6 @@ const BetterImageNeeded = ({ message, onReset, hasCamera, onStartCamera }: {
         </div>
         
         <div className="flex mt-4 gap-3">
-          {hasCamera && (
-            <Button 
-              onClick={onStartCamera}
-              className="bg-red-600 hover:bg-red-700 flex-1"
-            >
-              <Camera className="h-4 w-4 mr-2" />
-              Take New Photo
-            </Button>
-          )}
           <Button 
             variant="outline" 
             onClick={onReset}
@@ -111,63 +99,66 @@ export default function MeterUploadForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<MeterAnalysisResult | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [imageQualityWarning, setImageQualityWarning] = useState<string | null>(null) // State for non-blocking quality warnings
+  const [imageQualityWarning, setImageQualityWarning] = useState<string | null>(null)
   
   const [dragActive, setDragActive] = useState(false)
-  const [showCamera, setShowCamera] = useState(false)
-  // Removed uploadProgress as it wasn't fully implemented and analysisPhase provides better context
-  const [analysisPhase, setAnalysisPhase] = useState<string | null>(null) // e.g., 'Uploading', 'Enhancing', 'Analyzing'
+  const [analysisPhase, setAnalysisPhase] = useState<string | null>(null)
   
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
   
-  const [hasCamera, setHasCamera] = useState(false)
   const isMobile = useMobile()
   const { toast } = useToast()
 
-  // Handle errors for camera and media access
-  const handleError = (error: Event) => {
-    console.error("An error occurred:", error);
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
     
-    if (showCamera) {
-      toast({
-        title: "Camera Error",
-        description: "There was an error accessing your camera. Please try uploading an image instead.",
-        variant: "destructive",
-      });
-      setShowCamera(false);
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true)
+    } else if (e.type === 'dragleave') {
+      setDragActive(false)
     }
-  };
+  }
 
-  useEffect(() => {
-    navigator.mediaDevices?.getUserMedia({ video: true })
-      .then(() => setHasCamera(true))
-      .catch(() => setHasCamera(false))
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
     
-    window.addEventListener('error', handleError)
-    
-    return () => {
-      window.removeEventListener('error', handleError)
-    }
-  }, [])
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const droppedFile = e.dataTransfer.files[0]
+      
+      // Check file size and type
+      if (droppedFile.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          title: "File too large",
+          description: "Maximum file size is 5MB. Please upload a smaller image.",
+          variant: "destructive",
+        })
+        return
+      }
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(droppedFile.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a JPG, PNG, WEBP, or GIF image.",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      setFile(droppedFile)
+      setResult(null)
+      setErrorMessage(null)
+      setImageQualityWarning(null)
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (isLoading) {
-      interval = setInterval(() => {
-        // Removed uploadProgress updates as it's not fully implemented
-      }, 300);
-    } else {
-      // Removed uploadProgress reset as it's not fully implemented
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string)
+      }
+      reader.readAsDataURL(droppedFile)
     }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isLoading]);
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setErrorMessage(null) // Clear errors on new file selection
@@ -249,48 +240,55 @@ export default function MeterUploadForm() {
       }
 
       // --- STEP 3: Choose the best result ---
-      // Prioritize based on confidence score
+      // We'll preserve BOTH confidence scores instead of just picking the higher one
+      let originalConfidence = originalAnalysis ? (originalAnalysis.confidence_score ?? 0) : 0;
+      let enhancedConfidence = enhancedAnalysis ? (enhancedAnalysis.confidence_score ?? 0) : 0;
+      
+      // Default certainty displayed will be the higher of the two (or just the one we have)
+      const displayCertainty = Math.max(
+        enhancedConfidence ? Math.round(enhancedConfidence * 100) : 0,
+        originalConfidence ? Math.round(originalConfidence * 100) : 0
+      );
+      
+      // Log for debugging
+      console.log("Original confidence:", originalConfidence, 
+                 "Enhanced confidence:", enhancedConfidence,
+                 "Display certainty:", displayCertainty);
+      
+      // Always use the highest confidence result for the analysis details
       if (enhancedAnalysis && originalAnalysis) {
-        // Use whichever has higher confidence
-        const originalConfidence = originalAnalysis.confidence_score ?? 0;
-        const enhancedConfidence = enhancedAnalysis.confidence_score ?? 0;
-        
-        console.log("Original confidence:", originalConfidence, "Enhanced confidence:", enhancedConfidence);
-        
-        if (enhancedConfidence > originalConfidence) {
-          // Make sure to preserve the confidence_score when using enhanced result
-          finalAnalysis = { 
-            ...enhancedAnalysis, 
+        if (enhancedConfidence >= originalConfidence) {
+          finalAnalysis = {
+            ...enhancedAnalysis,
             wasImageUpscaled: true,
-            // Ensure confidence is explicitly copied
+            // Critical: Force the certainty value to match our calculation
+            certainty: displayCertainty,
+            // Store both confidence scores for reference
             confidence_score: enhancedConfidence,
-            // Also ensure certainty (which is displayed in the UI) matches confidence
-            certainty: Math.round(enhancedConfidence * 100)
+            original_confidence_score: originalConfidence
           };
         } else {
-          finalAnalysis = { 
-            ...originalAnalysis, 
+          finalAnalysis = {
+            ...originalAnalysis,
             wasImageUpscaled: false,
-            // Also ensure values are explicitly set
+            certainty: displayCertainty,
             confidence_score: originalConfidence,
-            certainty: Math.round(originalConfidence * 100)
+            enhanced_confidence_score: enhancedConfidence
           };
         }
       } else if (enhancedAnalysis) {
-        const enhancedConfidence = enhancedAnalysis.confidence_score ?? 0;
-        finalAnalysis = { 
-          ...enhancedAnalysis, 
+        finalAnalysis = {
+          ...enhancedAnalysis,
           wasImageUpscaled: true,
-          confidence_score: enhancedConfidence,
-          certainty: Math.round(enhancedConfidence * 100)
+          certainty: displayCertainty,
+          confidence_score: enhancedConfidence
         };
       } else if (originalAnalysis) {
-        const originalConfidence = originalAnalysis.confidence_score ?? 0;
-        finalAnalysis = { 
-          ...originalAnalysis, 
+        finalAnalysis = {
+          ...originalAnalysis,
           wasImageUpscaled: false,
-          confidence_score: originalConfidence,
-          certainty: Math.round(originalConfidence * 100)
+          certainty: displayCertainty,
+          confidence_score: originalConfidence
         };
       } else {
         throw new Error("Analysis failed. Please try again with a clearer image.");
@@ -302,14 +300,28 @@ export default function MeterUploadForm() {
       // Always show the result we got
       setResult(finalAnalysis);
       
-      // Add appropriate warnings based on confidence
-      const confidence = finalAnalysis.confidence_score ?? 0;
-      if (confidence < 0.70) {
-        setImageQualityWarning(`Very low confidence (${Math.round(confidence * 100)}%). Results are likely unreliable. Consider uploading a clearer image for better analysis.`);
-      } else if (confidence < 0.89) {
-        setImageQualityWarning(`Low confidence (${Math.round(confidence * 100)}%). Results may be less reliable. Consider using a clearer image.`);
-      } else if (confidence < 0.95) {
-        setImageQualityWarning(`Moderate confidence (${Math.round(confidence * 100)}%). Results should be reasonably accurate.`);
+      // Set appropriate warning based on confidence
+      if (displayCertainty < 70) {
+        if (wasEnhanced) {
+          setImageQualityWarning(`Very low confidence (${displayCertainty}% after enhancement). Results are likely unreliable. Consider uploading a clearer image for better analysis.`);
+        } else {
+          setImageQualityWarning(`Very low confidence (${displayCertainty}%). Results are likely unreliable. Consider uploading a clearer image for better analysis.`);
+        }
+      } else if (displayCertainty < 89) {
+        if (wasEnhanced) {
+          const improvementText = originalConfidence > 0 
+            ? ` (improved from ${Math.round(originalConfidence * 100)}%)`
+            : '';
+          setImageQualityWarning(`Low confidence (${displayCertainty}%${improvementText}). Results may be less reliable with this image quality.`);
+        } else {
+          setImageQualityWarning(`Low confidence (${displayCertainty}%). Results may be less reliable. Consider using a clearer image.`);
+        }
+      } else if (displayCertainty < 95) {
+        if (wasEnhanced && originalConfidence > 0) {
+          setImageQualityWarning(`Moderate confidence (${displayCertainty}%, improved from ${Math.round(originalConfidence * 100)}%). Results should be reasonably accurate.`);
+        } else {
+          setImageQualityWarning(`Moderate confidence (${displayCertainty}%). Results should be reasonably accurate.`);
+        }
       } else {
         setImageQualityWarning(null);
       }
@@ -477,114 +489,10 @@ export default function MeterUploadForm() {
   const handleReset = () => {
     setFile(null)
     setPreviewUrl(null)
-    setIsLoading(false)
     setResult(null)
     setErrorMessage(null)
     setImageQualityWarning(null)
-    setShowCamera(false)
-    stopCamera() // Ensure camera stops if it was open
-    setAnalysisPhase(null)
-    if (fileInputRef.current) fileInputRef.current.value = ""; // Clear file input
-  }
-
-  // --- Drag and Drop Handlers ---
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true)
-    } else if (e.type === "dragleave") {
-      setDragActive(false)
-    }
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
-
-    const dt = e.dataTransfer
-    const droppedFile = dt.files?.[0]
-
-    if (!droppedFile) return
-
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(droppedFile.type)) {
-      setErrorMessage("Invalid file type. Please upload a JPG, PNG, WEBP, or GIF image.")
-      return
-    }
-
-    setFile(droppedFile)
-    setResult(null)
-    setErrorMessage(null)
-    setImageQualityWarning(null)
-
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setPreviewUrl(reader.result as string)
-    }
-    reader.readAsDataURL(droppedFile)
-  }
-
-  const startCamera = async () => {
-    try {
-      if (!videoRef.current) return
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      })
-
-      videoRef.current.srcObject = stream
-      setShowCamera(true)
-    } catch (error) {
-      toast({
-        title: "Camera Error",
-        description: "Could not access your camera",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const stopCamera = () => {
-    if (!videoRef.current?.srcObject) return
-
-    const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
-    tracks.forEach((track) => track.stop())
-    videoRef.current.srcObject = null
-    setShowCamera(false)
-  }
-
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return
-
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    const context = canvas.getContext("2d")
-
-    if (!context) return
-
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return
-
-        const capturedFile = new File([blob], `meter-${Date.now()}.jpg`, {
-          type: "image/jpeg",
-        })
-
-        setFile(capturedFile)
-        setPreviewUrl(canvas.toDataURL("image/jpeg"))
-        stopCamera()
-        setResult(null)
-        setErrorMessage(null)
-        setImageQualityWarning(null)
-      },
-      "image/jpeg",
-      0.9
-    )
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   const getCertaintyColor = (certainty: number) => {
@@ -614,8 +522,6 @@ export default function MeterUploadForm() {
     }
   };
 
-  const isCameraActive = showCamera && hasCamera;
-  
   return (
     <div className="space-y-6">
       {/* Error Message */}
@@ -658,21 +564,6 @@ export default function MeterUploadForm() {
                 >
                   Upload New Photo
                 </Button>
-                {hasCamera && (
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => {
-                      handleReset();
-                      setShowCamera(true);
-                    }}
-                    className="bg-white text-amber-700 border-amber-300 hover:bg-amber-50"
-                  >
-                    <Camera className="h-3.5 w-3.5 mr-1.5" />
-                    Take New Photo
-                  </Button>
-                )}
               </div>
             </div>
           </div>
@@ -689,7 +580,7 @@ export default function MeterUploadForm() {
           className={`
             border-2 border-dashed rounded-xl p-4 transition-all duration-200 ease-in-out
             ${dragActive ? 'border-blue-400 bg-blue-50' : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50'}
-            ${showCamera || previewUrl ? 'bg-black border-gray-800' : ''}
+            ${previewUrl ? 'bg-black border-gray-800' : ''}
           `}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -697,38 +588,8 @@ export default function MeterUploadForm() {
           onDrop={handleDrop}
         >
           <div className="flex flex-col items-center justify-center min-h-[300px] relative">
-            {/* Camera View */}
-            {showCamera && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black">
-                <video 
-                  ref={videoRef} 
-                  autoPlay 
-                  playsInline 
-                  className="max-h-full max-w-full object-contain"
-                />
-                <div className="absolute bottom-4 left-0 right-0 flex justify-center">
-                  <Button
-                    type="button"
-                    onClick={capturePhoto}
-                    size="sm"
-                    className="rounded-full h-12 w-12 p-0 bg-white hover:bg-gray-100"
-                  >
-                    <Camera className="h-6 w-6 text-blue-600" />
-                  </Button>
-                </div>
-                <Button
-                  type="button"
-                  onClick={stopCamera}
-                  size="sm"
-                  className="absolute top-2 right-2 h-8 w-8 p-0 rounded-full bg-gray-800/70 hover:bg-gray-700/70"
-                >
-                  <X className="h-4 w-4 text-white" />
-                </Button>
-              </div>
-            )}
-            
             {/* Image Preview */}
-            {previewUrl && !showCamera && (
+            {previewUrl && (
               <div className="absolute inset-0 flex items-center justify-center bg-black">
                 <img
                   src={previewUrl}
@@ -747,10 +608,10 @@ export default function MeterUploadForm() {
             )}
             
             {/* Upload UI */}
-            {!showCamera && !previewUrl && (
+            {!previewUrl && (
               <div className="space-y-4 text-center">
                 <div className="bg-blue-100 rounded-full p-3 mx-auto">
-                  <Camera className="h-6 w-6 text-blue-600" />
+                  <Upload className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
                   <h3 className="text-lg font-medium text-gray-900">Upload Meter Photo</h3>
@@ -776,18 +637,6 @@ export default function MeterUploadForm() {
                     Choose Photo
                   </Button>
                   
-                  {hasCamera && (
-                    <Button 
-                      type="button" 
-                      onClick={() => setShowCamera(true)} 
-                      variant="outline"
-                      className="border-blue-200 text-blue-700 hover:bg-blue-50"
-                    >
-                      <Camera className="h-4 w-4 mr-2" />
-                      Use Camera
-                    </Button>
-                  )}
-                  
                   <p className="text-xs text-gray-500 mt-2">
                     Drag & drop also supported
                   </p>
@@ -802,15 +651,13 @@ export default function MeterUploadForm() {
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
                 </div>
                 <p className="text-white font-medium mb-1">{analysisPhase || "Analyzing..."}</p>
-                {/* Optional Progress Bar - could be tied to a more granular progress state if available */}
-                {/* <Progress value={33} className="w-full max-w-xs mt-2" /> */}
               </div>
             )}
           </div>
         </div>
         
         {/* Submit button - only show if image is selected */}
-        {previewUrl && !showCamera && !isLoading && (
+        {previewUrl && !isLoading && (
           <Button 
             type="submit" 
             className="mt-4 bg-blue-600 hover:bg-blue-700 transition-all duration-200"
@@ -822,72 +669,14 @@ export default function MeterUploadForm() {
         )}
       </form>
 
-      {/* Camera button for mobile */}
-      {!previewUrl && !showCamera && hasCamera && (
-        <div className="flex justify-center mt-4">
-          <Button
-            type="button"
-            onClick={startCamera}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            <Camera className="h-4 w-4" />
-            <span>Take Photo</span>
-          </Button>
-        </div>
-      )}
-      
       {/* Better Image Needed Warning (high priority) */}
       {imageQualityWarning && !result && (
         <BetterImageNeeded 
           message={imageQualityWarning}
           onReset={handleReset}
-          hasCamera={hasCamera}
-          onStartCamera={startCamera}
         />
       )}
-
-      {/* Minor Image Quality Warning (lower priority, only shown with results) */}
-      {imageQualityWarning && result && result.result !== "RTS meter" && (
-        <Card className="mt-4 border-amber-300 bg-amber-50">
-          <CardContent className="pt-6">
-            <div className="flex items-start space-x-3">
-              <AlertTriangle className="h-6 w-6 text-amber-600 flex-shrink-0 mt-0.5" />
-              <div className="space-y-2">
-                <h3 className="font-medium text-amber-800">Image Quality Issue</h3>
-                <p className="text-sm text-amber-700">{imageQualityWarning}</p>
-                <div className="flex space-x-3 pt-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="border-amber-300 text-amber-700 hover:bg-amber-100"
-                    onClick={() => {
-                      if (hasCamera) {
-                        handleReset();
-                        startCamera();
-                      } else {
-                        handleReset();
-                      }
-                    }}
-                  >
-                    <Camera className="h-3.5 w-3.5 mr-1.5" />
-                    Take New Photo
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="border-amber-300 text-amber-700 hover:bg-amber-100"
-                    onClick={handleReset}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                    Try Another Image
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
+      
       {/* Analysis Results */}
       {result && (
         <motion.div 
@@ -903,9 +692,13 @@ export default function MeterUploadForm() {
                     <AlertTriangle className="h-5 w-5 text-red-600 mr-2" />
                     <CardTitle className="text-red-800">RTS Meter Detected</CardTitle>
                   </div>
+                  
                   {result.certainty !== undefined && result.certainty > 0 && (
                     <Badge variant="outline" className="ml-2 bg-red-100 border-red-200 text-red-800">
                       {result.certainty}% Certainty
+                      {result.original_confidence_score !== undefined && (
+                        <span className="text-xs ml-1">(improved from {Math.round(result.original_confidence_score * 100)}%)</span>
+                      )}
                     </Badge>
                   )}
                 </div>
@@ -959,6 +752,9 @@ export default function MeterUploadForm() {
                   {result.certainty !== undefined && result.certainty > 0 && (
                     <Badge variant="default" className="ml-2">
                       {result.certainty}% {result.certainty > 90 ? "Confident" : "Certainty"}
+                      {result.original_confidence_score !== undefined && (
+                        <span className="text-xs ml-1">(from {Math.round(result.original_confidence_score * 100)}%)</span>
+                      )}
                     </Badge>
                   )}
                 </div>
