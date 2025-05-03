@@ -9,6 +9,7 @@ const MORE_INFO_FEEDBACK = "We need a clearer image of your meter. Please ensure
 const analysisPrompt = `You are a highly skilled energy expert specializing in electricity meter analysis. Your task is to analyze the photo of an electricity meter and determine whether it is an RTS (Radio Teleswitch Service) meter with extremely high accuracy.
 
 RTS meters have distinctive features:
+! This list is not exhaustive and you should use your best judgement to make a decision.
 1. They typically have a RED BUTTON, 
 2. They often display "Radio Teleswitch" or "RADIO TELESWITCH" text
 3. They frequently show "RTS" text somewhere on the meter or connected box
@@ -19,7 +20,9 @@ RTS meters have distinctive features:
 8. They look like the are plugged into something else
 9. They are usually wired to another black box
 10. They usually have two rates for the readings
-11. They look old and are usually made of metal
+11. They look old and are usually made of metal 
+12. If it has anything about radio signals it is probably an RTS meter
+
 
 CRITICAL INSTRUCTIONS:
 - If you see a RED BUTTON on a black box near the meter, this is VERY STRONG evidence of an RTS meter
