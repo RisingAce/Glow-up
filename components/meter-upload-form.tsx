@@ -269,13 +269,27 @@ export default function MeterUploadForm() {
               throw new Error("Failed to parse analysis result")
             }
             confidence = analysis.confidence_score ?? 0
+            
+            // After enhancement, always show the results regardless of confidence
+            setAnalysisPhase('Processing results')
+            
+            // Show warning if confidence is still moderate
+            if (confidence < 0.95) {
+              setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled });
+              setImageQualityWarning(`Enhanced image analysis (${Math.round(confidence * 100)}% confidence). Results may be less reliable with this image quality.`);
+            } else {
+              setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled });
+              setImageQualityWarning(null);
+            }
+            setErrorMessage(null);
+            return; // Exit early and skip the threshold check below
           }
         }
       }
       
       setAnalysisPhase('Processing results')
       
-      // Final determination based on confidence score
+      // Only run this code for original image (not enhanced) analysis
       if (!analysis || confidence < 0.89) {
         // Confidence still too low - require a better image
         const feedback = analysis?.imageQualityFeedback || MORE_INFO_FEEDBACK;
