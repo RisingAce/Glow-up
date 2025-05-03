@@ -817,7 +817,7 @@ export default function MeterUploadForm() {
                 </div>
               </CardContent>
             </Card>
-          ) : (
+          ) : result.result === "Not an RTS meter" ? (
             <Card className="border-blue-300 shadow-sm">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
@@ -894,6 +894,93 @@ export default function MeterUploadForm() {
                 </div>
               </CardContent>
             </Card>
+          ) : result.result === "Unknown" ? (
+            <Card className="border-gray-300 shadow-sm">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <AlertTriangle className="h-5 w-5 text-gray-600 mr-2" />
+                    <CardTitle className="text-gray-800">Analysis Inconclusive</CardTitle>
+                  </div>
+                  
+                  {result.certainty !== undefined && (
+                    <Badge variant="outline" className="ml-2 bg-gray-100 text-gray-800 border-gray-300">
+                      {result.certainty}% Confidence
+                    </Badge>
+                  )}
+                </div>
+                
+                <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  <span>Analysis complete with low confidence</span>
+                  {result.wasImageUpscaled && (
+                    <Badge variant="outline" className="text-xs ml-2 bg-gray-50 border-gray-200 text-gray-700">
+                      Enhanced Image
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="p-4 bg-white rounded-lg border border-gray-100 shadow-sm">
+                    <p className="text-gray-700">{result.explanation || "Analysis was inconclusive. Please take a clearer photo with better lighting and focus."}</p>
+                  </div>
+                  
+                  {/* Certainty Meter */}
+                  {result.certainty !== undefined && (
+                    <div className="pt-2 border-t border-gray-100 mt-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Confidence Score:</span>
+                        <span className="font-medium text-gray-700">{result.certainty}%</span>
+                      </div>
+                      <div className="mt-1.5 bg-gray-200 rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="h-full bg-gray-400 transition-all duration-300 ease-out" 
+                          style={{ width: `${result.certainty}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Technical Details Accordion */}
+                  {result.reasoning && (
+                    <Accordion type="single" collapsible className="border rounded-lg">
+                      <AccordionItem value="reasoning" className="border-b-0">
+                        <AccordionTrigger className="px-4 hover:no-underline hover:bg-gray-50/50">
+                          <span className="text-sm font-medium text-gray-700">View Analysis Details</span>
+                        </AccordionTrigger>
+                        <AccordionContent className="px-4 pt-2 pb-3 text-sm bg-gray-50">
+                          <div className="text-gray-700 whitespace-pre-wrap">
+                            {result.reasoning}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  )}
+                  
+                  {/* Any additional info */}
+                  {result.additionalInfo && (
+                    <div className="border rounded-lg p-4 bg-gray-50/30">
+                      <h4 className="text-sm font-medium text-gray-700 mb-1">Additional Information</h4>
+                      <p className="text-sm text-gray-700">{result.additionalInfo}</p>
+                    </div>
+                  )}
+
+                  {/* Better image recommendation */}
+                  <div className="border rounded-lg p-4 bg-amber-50 border-amber-200">
+                    <div className="flex items-start">
+                      <Info className="h-5 w-5 text-amber-500 mr-3 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h4 className="text-sm font-medium text-amber-800 mb-1">Recommendation</h4>
+                        <p className="text-sm text-amber-700">Try taking another photo with better lighting and focus for a more conclusive result. If you're still unsure, consider contacting your energy supplier.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <></>
           )}
         </motion.div>
       )}

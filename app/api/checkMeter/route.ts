@@ -173,9 +173,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           if (!analysisResult.certainty || analysisResult.certainty === 0) {
             analysisResult.certainty = 10;
           }
-          // Cap certainty at 100%
+          
+          // Normalize certainty to a value between 10-100
+          // First check if it's potentially in thousands (e.g., 8500 instead of 85)
           if (analysisResult.certainty > 100) {
-            analysisResult.certainty = 100;
+            // If over 100, we'll assume it needs to be normalized to 10-100 range
+            // Divide by 100 if it's in thousands
+            if (analysisResult.certainty >= 1000) {
+              analysisResult.certainty = Math.round(analysisResult.certainty / 100);
+            } else {
+              analysisResult.certainty = 100; // Cap at 100% for any other over-limit values
+            }
           }
           
           // Convert confidence_score to a percentage if it's in decimal format (0-1 range)
@@ -184,27 +192,44 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
               // Convert from decimal to percentage (0.75 → 75)
               analysisResult.confidence_score = analysisResult.confidence_score * 100;
             }
-            // Cap confidence_score at 100%
+            
+            // Normalize confidence_score if it's in thousands
             if (analysisResult.confidence_score > 100) {
-              analysisResult.confidence_score = 100;
+              if (analysisResult.confidence_score >= 1000) {
+                analysisResult.confidence_score = Math.round(analysisResult.confidence_score / 100);
+              } else {
+                analysisResult.confidence_score = 100;
+              }
             }
           } else {
             // If no confidence_score exists, use certainty
             analysisResult.confidence_score = analysisResult.certainty;
           }
           
-          // Skip image quality issues if RTS meter is detected
+          // Determine the classification based on confidence thresholds
+          // If RTS meter with very low confidence, label as "Unknown"
           if (analysisResult.result === "RTS meter") {
             // Clear any image quality flags for RTS meters
             analysisResult.imageQualityIssue = false;
             analysisResult.imageQualityFeedback = undefined; 
             analysisResult.needsBetterImage = false;
             
+            // Change the result to "Unknown" if the certainty is too low
+            if (analysisResult.certainty < 50) {
+              analysisResult.result = "Unknown";
+              analysisResult.explanation = "There might be evidence of an RTS meter, but the confidence is too low to make a definitive determination. " + (analysisResult.explanation || "");
+            }
             // Boost confidence for RTS meters to prevent false negatives
-            if (analysisResult.certainty < 70) {
+            else if (analysisResult.certainty < 70) {
               analysisResult.certainty = Math.min(70, analysisResult.certainty + 20);
             }
           } else {
+            // Similarly, if Not an RTS meter with very low confidence, label as "Unknown"
+            if (analysisResult.certainty < 50) {
+              analysisResult.result = "Unknown";
+              analysisResult.explanation = "The image doesn't appear to show an RTS meter, but the confidence is too low to make a definitive determination. " + (analysisResult.explanation || "");
+            }
+            
             // Check for image quality issues
             const qualityCheck = detectImageQualityIssues(analysisResult);
             if (qualityCheck.hasIssues) {
