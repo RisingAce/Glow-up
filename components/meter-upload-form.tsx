@@ -249,21 +249,28 @@ export default function MeterUploadForm() {
       const analysis: MeterAnalysisResult = await response.json()
       setAnalysisPhase('Processing results') // Update phase
 
-      // Separate handling for blocking issues vs warnings
-      if (analysis.needsBetterImage) {
-        // This is a blocking issue - requires user action
-        setResult(analysis) // Still set result to display the feedback
-        setErrorMessage(null) // Clear generic error message
-      } else if (analysis.imageQualityIssue && analysis.imageQualityFeedback) {
-        // This is a non-blocking warning - show results but also the warning
-        setResult(analysis)
-        setImageQualityWarning(analysis.imageQualityFeedback)
-        setErrorMessage(null) // Clear generic error message
+      const confidence = analysis.confidence_score ?? 1.0; // Default to 100% if score is missing
+
+      if (confidence < 0.80) {
+        // Confidence too low - require a better image
+        const feedback = analysis.imageQualityFeedback || MORE_INFO_FEEDBACK;
+        setResult({ 
+          ...analysis, // Keep other analysis data if needed
+          needsBetterImage: true, 
+          imageQualityFeedback: feedback
+        });
+        setErrorMessage(null);
+        setImageQualityWarning(null);
+      } else if (confidence < 0.90) {
+        // Moderate confidence - show result with a warning
+        setResult({ ...analysis, needsBetterImage: false }); // Ensure needsBetterImage is false
+        setImageQualityWarning(`Confidence is moderate (${Math.round(confidence * 100)}%). Results may be less accurate. ${analysis.imageQualityFeedback || ''}`);
+        setErrorMessage(null);
       } else {
-        // Success case - no major quality issues
-        setResult(analysis)
-        setErrorMessage(null)
-        setImageQualityWarning(null)
+        // High confidence - show result normally
+        setResult({ ...analysis, needsBetterImage: false }); // Ensure needsBetterImage is false
+        setErrorMessage(null);
+        setImageQualityWarning(null);
       }
 
     } catch (error: any) {
