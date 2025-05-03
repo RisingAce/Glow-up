@@ -11,11 +11,7 @@ const nextConfig = {
     domains: ['checkyourmeter.com'],
   },
   compress: true,
-  poweredByHeader: false,
-  experimental: {
-    optimizeCss: true,
-    scrollRestoration: true,
-  },
+  poweredByHeader: false
 }
 
 export default nextConfig
