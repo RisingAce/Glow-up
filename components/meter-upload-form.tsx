@@ -215,57 +215,82 @@ export default function MeterUploadForm() {
       // Check for potential quality issues *before* submitting if possible
       // (Simple client-side checks could go here if desired, e.g., resolution)
       
-      // --- Image Upscaling (Optional) ---
+      // --- Initial Analysis without upscaling ---
       let imageToAnalyze = file;
       let wasImageUpscaled = false;
-      // Optional: Decide if upscaling is needed based on file size/dimensions
-      // For simplicity, we'll attempt upscale if it seems small, but the API handles quality checks robustly.
-      // A more sophisticated check might look at image dimensions.
-      if (file.size < 150 * 1024) { // Example: Try upscale for images under 150KB
-         setAnalysisPhase('Enhancing image');
-         const upscaledFile = await upscaleImage(file);
-         if (upscaledFile) {
-             imageToAnalyze = upscaledFile;
-             wasImageUpscaled = true;
-         } // else: continue with original if upscale fails
-      }
-
-      // --- API Call ---
-      setAnalysisPhase('Analyzing with AI') // Update phase
-      const formData = new FormData()
+      let analysis: MeterAnalysisResult | null = null;
+      let confidence = 0;
+      
+      // First attempt - with original image
+      setAnalysisPhase('Analyzing with AI')
+      let formData = new FormData()
       formData.append('image', imageToAnalyze)
-      formData.append('wasImageUpscaled', String(wasImageUpscaled)); // Inform API if upscaled
+      formData.append('wasImageUpscaled', String(wasImageUpscaled))
 
-      const response = await fetch('/api/checkMeter', {
+      let response = await fetch('/api/checkMeter', {
         method: 'POST',
         body: formData,
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({})) // Gracefully handle non-JSON errors
+        const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || `HTTP error! Status: ${response.status}`)
       }
 
-      const analysis: MeterAnalysisResult = await response.json()
-      setAnalysisPhase('Processing results') // Update phase
-
-      const confidence = analysis.confidence_score ?? 1.0; // Default to 100% if score is missing
-
-      if (confidence < 0.80) {
-        // Confidence too low - require a better image
-        const feedback = analysis.imageQualityFeedback || MORE_INFO_FEEDBACK;
+      analysis = await response.json()
+      if (!analysis) {
+        throw new Error("Failed to parse analysis result")
+      }
+      confidence = analysis.confidence_score ?? 0;
+      
+      // If confidence is low, try upscaling and reanalyzing
+      if (confidence < 0.89) {
+        setAnalysisPhase('Enhancing image quality') 
+        const upscaledFile = await upscaleImage(file)
+        
+        if (upscaledFile) {
+          // Retry with upscaled image
+          imageToAnalyze = upscaledFile
+          wasImageUpscaled = true
+          
+          setAnalysisPhase('Reanalyzing with enhanced image')
+          formData = new FormData()
+          formData.append('image', imageToAnalyze)
+          formData.append('wasImageUpscaled', String(wasImageUpscaled))
+          
+          response = await fetch('/api/checkMeter', {
+            method: 'POST',
+            body: formData,
+          })
+          
+          if (response.ok) {
+            analysis = await response.json()
+            if (!analysis) {
+              throw new Error("Failed to parse analysis result")
+            }
+            confidence = analysis.confidence_score ?? 0
+          }
+        }
+      }
+      
+      setAnalysisPhase('Processing results')
+      
+      // Final determination based on confidence score
+      if (!analysis || confidence < 0.89) {
+        // Confidence still too low - require a better image
+        const feedback = analysis?.imageQualityFeedback || MORE_INFO_FEEDBACK;
         // Don't set result, only set the warning message to trigger BetterImageNeeded component
         setResult(null);
         setImageQualityWarning(feedback);
         setErrorMessage(null);
-      } else if (confidence < 0.90) {
+      } else if (confidence < 0.95) {
         // Moderate confidence - show result with a warning
-        setResult({ ...analysis, needsBetterImage: false }); // Ensure needsBetterImage is false
+        setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled }); // Ensure needsBetterImage is false
         setImageQualityWarning(`Confidence is moderate (${Math.round(confidence * 100)}%). Results may be less accurate. ${analysis.imageQualityFeedback || ''}`);
         setErrorMessage(null);
       } else {
         // High confidence - show result normally
-        setResult({ ...analysis, needsBetterImage: false }); // Ensure needsBetterImage is false
+        setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled }); // Ensure needsBetterImage is false
         setErrorMessage(null);
         setImageQualityWarning(null);
       }
@@ -295,7 +320,7 @@ export default function MeterUploadForm() {
     reader.readAsDataURL(imageFile);
   };
 
-  // --- Image Upscaling Function ---
+  // --- Enhanced Image Upscaling Function ---
   const upscaleImage = (imageFile: File): Promise<File | null> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -310,28 +335,49 @@ export default function MeterUploadForm() {
             return;
           }
 
-          // Simple 2x upscale example
-          const targetWidth = img.width * 2;
-          const targetHeight = img.height * 2;
+          // More sophisticated upscaling with sharpening
+          // Use 2.5x for low-resolution images, 1.5x for larger ones
+          const scaleFactor = img.width < 800 ? 2.5 : 1.5;
+          const targetWidth = Math.round(img.width * scaleFactor);
+          const targetHeight = Math.round(img.height * scaleFactor);
+          
           canvas.width = targetWidth;
           canvas.height = targetHeight;
 
-          // Disable image smoothing for potentially sharper results on pixelated images
-          ctx.imageSmoothingEnabled = false;
-
+          // First pass: bilinear scaling with smoothing
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          
+          // Optional: Apply contrast enhancement
+          const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+          const enhancedData = enhanceContrast(imageData, 1.2); // 1.2 = moderate enhancement
+          ctx.putImageData(enhancedData, 0, 0);
 
-          // Convert canvas back to File
+          // Convert canvas back to File with improved quality
           canvas.toBlob((blob) => {
             if (blob) {
               const upscaledFile = new File([blob], `upscaled_${imageFile.name}`, {
-                type: imageFile.type, // Keep original type
+                type: 'image/jpeg', // Use JPEG for better quality control
                 lastModified: Date.now(),
               });
-              // Optional: Check if upscaled size is reasonable (e.g., not excessively large)
-              if (upscaledFile.size > 5 * 1024 * 1024) { // Limit upscaled size too
-                 console.warn("Upscaled image exceeds size limit, using original.");
-                 resolve(null);
+              
+              // Check if upscaled size is reasonable
+              if (upscaledFile.size > 5 * 1024 * 1024) { // 5MB limit
+                 console.warn("Upscaled image exceeds size limit, using compressed version.");
+                 
+                 // Try again with compression
+                 canvas.toBlob((compressedBlob) => {
+                   if (compressedBlob) {
+                     const compressedFile = new File([compressedBlob], `upscaled_${imageFile.name}`, {
+                       type: 'image/jpeg',
+                       lastModified: Date.now(),
+                     });
+                     resolve(compressedFile);
+                   } else {
+                     resolve(null);
+                   }
+                 }, 'image/jpeg', 0.7); // 70% quality
               } else {
                  resolve(upscaledFile);
               }
@@ -339,7 +385,7 @@ export default function MeterUploadForm() {
               console.warn("Canvas toBlob failed during upscaling.");
               resolve(null);
             }
-          }, imageFile.type); // Use original image type
+          }, 'image/jpeg', 0.9); // 90% quality
         };
         img.onerror = () => {
            console.warn("Failed to load image for upscaling.");
@@ -353,6 +399,38 @@ export default function MeterUploadForm() {
       };
       reader.readAsDataURL(imageFile);
     });
+  };
+
+  // Helper function for contrast enhancement
+  const enhanceContrast = (imageData: ImageData, factor: number): ImageData => {
+    const data = imageData.data;
+    const len = data.length;
+    
+    // Calculate average luminance (approximate)
+    let totalLuminance = 0;
+    for (let i = 0; i < len; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      // Weighted luminance formula (perceived brightness)
+      totalLuminance += 0.299 * r + 0.587 * g + 0.114 * b;
+    }
+    const avgLuminance = totalLuminance / (len / 4);
+    
+    // Apply contrast enhancement
+    for (let i = 0; i < len; i += 4) {
+      // For each RGB channel
+      for (let j = 0; j < 3; j++) {
+        const value = data[i + j];
+        // Apply contrast relative to average luminance
+        data[i + j] = Math.min(255, Math.max(0, 
+          avgLuminance + factor * (value - avgLuminance)
+        ));
+      }
+      // Alpha channel unchanged
+    }
+    
+    return imageData;
   };
 
   // --- Reset Function ---
