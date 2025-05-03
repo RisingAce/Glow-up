@@ -202,123 +202,154 @@ export default function MeterUploadForm() {
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!file || isLoading) return
+    e.preventDefault();
+    if (!file || isLoading) return;
 
-    setIsLoading(true)
-    setErrorMessage(null)
-    setResult(null)
-    setImageQualityWarning(null)
-    setAnalysisPhase('Uploading') // Set initial phase
+    // Reset all state before starting
+    setIsLoading(true);
+    setErrorMessage(null);
+    setResult(null);
+    setImageQualityWarning(null);
+    setAnalysisPhase('Preparing analysis');
 
     try {
-      // --- Initial Analysis with original image ---
-      let imageToAnalyze = file;
-      let wasImageUpscaled = false;
-      let analysis: MeterAnalysisResult | null = null;
-      let confidence = 0;
-      let attemptedEnhancement = false;
-      
-      // First attempt - with original image
-      setAnalysisPhase('Analyzing with AI')
-      let formData = new FormData()
-      formData.append('image', imageToAnalyze)
-      formData.append('wasImageUpscaled', String(wasImageUpscaled))
+      // --- STEP 1: Initial attempt with original image ---
+      let originalAnalysis = null;
+      let enhancedAnalysis = null;
+      let finalAnalysis = null;
+      let wasEnhanced = false;
 
-      let response = await fetch('/api/checkMeter', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || `HTTP error! Status: ${response.status}`)
+      // Try original image first
+      setAnalysisPhase('Analyzing original image');
+      try {
+        originalAnalysis = await performApiAnalysis(file, false);
+        console.log("Original analysis:", originalAnalysis);
+      } catch (err) {
+        console.error("Error during original image analysis:", err);
       }
 
-      analysis = await response.json()
-      if (!analysis) {
-        throw new Error("Failed to parse analysis result")
-      }
-      confidence = analysis.confidence_score ?? 0;
+      // --- STEP 2: Try with enhancement if original has issues or low confidence ---
+      const needsEnhancement = !originalAnalysis || 
+                              (originalAnalysis.confidence_score ?? 0) < 0.89;
       
-      // If confidence is low, try enhancing the image
-      if (confidence < 0.89) {
-        attemptedEnhancement = true;
-        setAnalysisPhase('Enhancing image quality') 
-        const upscaledFile = await upscaleImage(file)
+      if (needsEnhancement) {
+        setAnalysisPhase('Enhancing image quality');
+        const enhancedFile = await upscaleImage(file);
         
-        if (upscaledFile) {
-          // Retry with enhanced image
-          imageToAnalyze = upscaledFile
-          wasImageUpscaled = true
-          
-          setAnalysisPhase('Reanalyzing with enhanced image')
-          formData = new FormData()
-          formData.append('image', imageToAnalyze)
-          formData.append('wasImageUpscaled', String(wasImageUpscaled))
-          
-          response = await fetch('/api/checkMeter', {
-            method: 'POST',
-            body: formData,
-          })
-          
-          if (response.ok) {
-            const enhancedAnalysis = await response.json()
-            if (enhancedAnalysis) {
-              // Use the enhanced results only if they have better confidence
-              const enhancedConfidence = enhancedAnalysis.confidence_score ?? 0;
-              if (enhancedConfidence > confidence) {
-                analysis = enhancedAnalysis;
-                confidence = enhancedConfidence;
-              }
-            }
+        if (enhancedFile) {
+          setAnalysisPhase('Analyzing enhanced image');
+          try {
+            enhancedAnalysis = await performApiAnalysis(enhancedFile, true);
+            wasEnhanced = true;
+            console.log("Enhanced analysis:", enhancedAnalysis);
+          } catch (err) {
+            console.error("Error during enhanced image analysis:", err);
           }
         }
       }
-      
-      // ALWAYS show results, but with appropriate warnings based on confidence
-      setAnalysisPhase('Processing results')
-      
-      if (!analysis) {
-        throw new Error("No valid analysis result available");
+
+      // --- STEP 3: Choose the best result ---
+      // Prioritize based on confidence score
+      if (enhancedAnalysis && originalAnalysis) {
+        // Use whichever has higher confidence
+        const originalConfidence = originalAnalysis.confidence_score ?? 0;
+        const enhancedConfidence = enhancedAnalysis.confidence_score ?? 0;
+        
+        console.log("Original confidence:", originalConfidence, "Enhanced confidence:", enhancedConfidence);
+        
+        if (enhancedConfidence > originalConfidence) {
+          // Make sure to preserve the confidence_score when using enhanced result
+          finalAnalysis = { 
+            ...enhancedAnalysis, 
+            wasImageUpscaled: true,
+            // Ensure confidence is explicitly copied
+            confidence_score: enhancedConfidence,
+            // Also ensure certainty (which is displayed in the UI) matches confidence
+            certainty: Math.round(enhancedConfidence * 100)
+          };
+        } else {
+          finalAnalysis = { 
+            ...originalAnalysis, 
+            wasImageUpscaled: false,
+            // Also ensure values are explicitly set
+            confidence_score: originalConfidence,
+            certainty: Math.round(originalConfidence * 100)
+          };
+        }
+      } else if (enhancedAnalysis) {
+        const enhancedConfidence = enhancedAnalysis.confidence_score ?? 0;
+        finalAnalysis = { 
+          ...enhancedAnalysis, 
+          wasImageUpscaled: true,
+          confidence_score: enhancedConfidence,
+          certainty: Math.round(enhancedConfidence * 100)
+        };
+      } else if (originalAnalysis) {
+        const originalConfidence = originalAnalysis.confidence_score ?? 0;
+        finalAnalysis = { 
+          ...originalAnalysis, 
+          wasImageUpscaled: false,
+          confidence_score: originalConfidence,
+          certainty: Math.round(originalConfidence * 100)
+        };
+      } else {
+        throw new Error("Analysis failed. Please try again with a clearer image.");
       }
+
+      // --- STEP 4: Display results with appropriate warnings ---
+      setAnalysisPhase('Processing results');
       
-      // Always set the result, but add warnings based on confidence
-      setResult({ ...analysis, needsBetterImage: false, wasImageUpscaled });
+      // Always show the result we got
+      setResult(finalAnalysis);
       
-      // Set appropriate warning based on confidence level
+      // Add appropriate warnings based on confidence
+      const confidence = finalAnalysis.confidence_score ?? 0;
       if (confidence < 0.70) {
         setImageQualityWarning(`Very low confidence (${Math.round(confidence * 100)}%). Results are likely unreliable. Consider uploading a clearer image for better analysis.`);
       } else if (confidence < 0.89) {
-        if (attemptedEnhancement) {
-          setImageQualityWarning(`Low confidence (${Math.round(confidence * 100)}%) even after enhancement. Results may be less reliable with this image quality.`);
-        } else {
-          setImageQualityWarning(`Low confidence (${Math.round(confidence * 100)}%). Results may be less reliable. Consider using a clearer image.`);
-        }
+        setImageQualityWarning(`Low confidence (${Math.round(confidence * 100)}%). Results may be less reliable. Consider using a clearer image.`);
       } else if (confidence < 0.95) {
         setImageQualityWarning(`Moderate confidence (${Math.round(confidence * 100)}%). Results should be reasonably accurate.`);
       } else {
-        // No warning for high confidence
         setImageQualityWarning(null);
       }
       
-      setErrorMessage(null);
-
     } catch (error: any) {
-      console.error("Analysis error:", error)
-      // Use the error message from the API if available, otherwise a generic one
-      const message = error?.message || "An unexpected error occurred. Please try again."
-      setErrorMessage(message)
-      setResult(null)
-      setImageQualityWarning(null)
+      console.error("Analysis failed:", error);
+      setErrorMessage(error?.message || "Analysis failed. Please try again.");
+      setResult(null);
     } finally {
-      setIsLoading(false)
-      setAnalysisPhase(null) // Clear phase on completion or error
+      setIsLoading(false);
+      setAnalysisPhase(null);
     }
-  }
+  };
+
+  // Helper function to analyze an image with error handling
+  const performApiAnalysis = async (imageFile: File, wasUpscaled: boolean): Promise<MeterAnalysisResult> => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    formData.append('wasImageUpscaled', String(wasUpscaled));
+
+    const response = await fetch('/api/checkMeter', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `API error: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (!result) {
+      throw new Error("Failed to parse analysis result");
+    }
+
+    return result;
+  };
 
   // Function to initiate analysis (used by button)
-  const analyzeImage = (imageFile: File) => {
+  const initiateImageAnalysis = (imageFile: File) => {
     setFile(imageFile);
     const reader = new FileReader();
     reader.onloadend = () => {
