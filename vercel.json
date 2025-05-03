@@ -30,7 +30,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.googletagmanager.com *.googlesyndication.com pagead2.googlesyndication.com *.vercel-insights.com fundingchoicesmessages.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: *.googlesyndication.com; connect-src 'self' *.vercel-insights.com googleads.g.doubleclick.net *.googlesyndication.com pagead2.googlesyndication.com tpc.googlesyndication.com fundingchoicesmessages.google.com; font-src 'self'; frame-src 'self' *.googlesyndication.com pagead2.googlesyndication.com googleads.g.doubleclick.net tpc.googlesyndication.com; object-src 'none'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' *.googletagmanager.com *.googlesyndication.com pagead2.googlesyndication.com *.vercel-insights.com fundingchoicesmessages.google.com googleads.g.doubleclick.net partner.googleadservices.com tpc.googlesyndication.com www.googletagservices.com adservice.google.com adservice.google.co.uk; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: *.googlesyndication.com *.google.com *.google.co.uk *.googleusercontent.com *.gstatic.com googleads.g.doubleclick.net; connect-src 'self' *.vercel-insights.com googleads.g.doubleclick.net *.googlesyndication.com pagead2.googlesyndication.com tpc.googlesyndication.com fundingchoicesmessages.google.com adservice.google.com adservice.google.co.uk; font-src 'self' data: *.gstatic.com; frame-src 'self' *.googlesyndication.com pagead2.googlesyndication.com googleads.g.doubleclick.net tpc.googlesyndication.com *.google.com; object-src 'none'; media-src 'self'"
         }
       ]
     },
