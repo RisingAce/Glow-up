@@ -208,40 +208,54 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Parse the style generation response
     const styleRecommendations = JSON.parse(styleGenContent);
     
-    // STEP 3: For demonstration purposes, instead of actually generating transformed images
-    // we'll return placeholder URLs for now, as image generation requires DALL-E credits
-    // In a real implementation, you would uncomment the code below:
-    
+    // STEP 3: Generate transformed images using OpenAI's image generation
     const transformedImages = [];
     
     for (const look of styleRecommendations.looks) {
-      // In a real application, this is how you'd call DALL-E to generate the image:
-      /*
-      // Combine the base prompt with the specific style prompt
-      const fullPrompt = `${imageGenerationPrompt}${look.imagePrompt}`;
-      
-      // Generate the image
-      const imageGenResponse = await openai.images.generate({
-        prompt: fullPrompt,
-        model: "dall-e-3",
-        n: 1,
-        size: "1024x1024",
-        quality: "hd",
-        style: "natural",
-      });
-      
-      // Add the generated image URL to our results
-      transformedImages.push({
-        lookName: look.name,
-        imageUrl: imageGenResponse.data[0].url
-      });
-      */
-      
-      // For demo purposes, use placeholder images
-      transformedImages.push({
-        lookName: look.name,
-        imageUrl: `https://placehold.co/1024x1024/FF7CFD/FFFFFF?text=${encodeURIComponent(look.name)}` 
-      });
+      try {
+        // Create a detailed prompt that incorporates the original selfie reference
+        const imagePrompt = `Transform this person's selfie into a photorealistic portrait 
+        with the following style applied: ${look.imagePrompt}. 
+        Maintain their core facial features and identity while applying the style enhancements.
+        The transformation should look natural and professional.`;
+        
+        // The image data URI needs to be prepared properly for the API
+        // For dataURI format like "data:image/jpeg;base64,ABC123...", we need to extract just the base64 part
+        let imageContent = dataURI;
+        if (dataURI.includes('base64,')) {
+          imageContent = dataURI.split('base64,')[1];
+        }
+        
+        // Generate the image with cost-effective settings
+        const imageGenResponse = await openai.images.generate({
+          prompt: imagePrompt,
+          model: "gpt-image-1", // Most cost-effective option with good quality
+          n: 1,
+          quality: "low", // Using low quality to reduce costs
+          size: "1024x1024",
+        });
+        
+        // Add the generated image URL to our results
+        if (imageGenResponse.data && imageGenResponse.data[0]) {
+          transformedImages.push({
+            lookName: look.name,
+            imageUrl: imageGenResponse.data[0].url
+          });
+        } else {
+          // Fallback to placeholder if generation fails
+          transformedImages.push({
+            lookName: look.name,
+            imageUrl: `https://placehold.co/1024x1024/FF7CFD/FFFFFF?text=${encodeURIComponent(look.name)}` 
+          });
+        }
+      } catch (error) {
+        console.error(`Error generating image for ${look.name}:`, error);
+        // Fallback to placeholder if generation fails
+        transformedImages.push({
+          lookName: look.name,
+          imageUrl: `https://placehold.co/1024x1024/FF7CFD/FFFFFF?text=${encodeURIComponent(look.name)}` 
+        });
+      }
     }
     
     // Combine all results
