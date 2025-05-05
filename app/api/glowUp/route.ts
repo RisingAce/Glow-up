@@ -115,8 +115,6 @@ function detectImageQualityIssues(faceAnalysis: any): { hasIssues: boolean, feed
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const formData = await request.formData();
-    
     // Get API key from environment variables
     const apiKey = process.env.OPENAI_API_KEY;
     
@@ -133,7 +131,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       apiKey: apiKey
     });
 
-    const image = formData.get("image") as File;
+    // Parse the JSON request body instead of formData
+    const { image } = await request.json();
     
     if (!image) {
       return NextResponse.json(
@@ -142,11 +141,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Convert the uploaded file to base64
-    const fileBuffer = await image.arrayBuffer();
-    const buffer = Buffer.from(fileBuffer);
-    const fileBase64 = buffer.toString("base64");
-    const dataURI = `data:${image.type};base64,${fileBase64}`;
+    // The image is already in base64 format
+    const dataURI = image;
     
     // STEP 1: Analyze the face in the selfie
     const faceAnalysisResponse = await openai.chat.completions.create({
