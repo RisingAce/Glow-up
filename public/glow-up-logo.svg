@@ -1,0 +1,25 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF7CFD" />
+      <stop offset="100%" stop-color="#76F4D1" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <circle cx="100" cy="100" r="80" fill="white" />
+  <path d="M100 50C105.523 50 110 45.5228 110 40C110 34.4772 105.523 30 100 30C94.4772 30 90 34.4772 90 40C90 45.5228 94.4772 50 100 50Z" fill="url(#gradient)" filter="url(#glow)" />
+  <path d="M140 90C145.523 90 150 85.5228 150 80C150 74.4772 145.523 70 140 70C134.477 70 130 74.4772 130 80C130 85.5228 134.477 90 140 90Z" fill="url(#gradient)" filter="url(#glow)" />
+  <path d="M60 90C65.5228 90 70 85.5228 70 80C70 74.4772 65.5228 70 60 70C54.4772 70 50 74.4772 50 80C50 85.5228 54.4772 90 60 90Z" fill="url(#gradient)" filter="url(#glow)" />
+  <path d="M80 130C85.5228 130 90 125.523 90 120C90 114.477 85.5228 110 80 110C74.4772 110 70 114.477 70 120C70 125.523 74.4772 130 80 130Z" fill="url(#gradient)" filter="url(#glow)" />
+  <path d="M120 130C125.523 130 130 125.523 130 120C130 114.477 125.523 110 120 110C114.477 110 110 114.477 110 120C110 125.523 114.477 130 120 130Z" fill="url(#gradient)" filter="url(#glow)" />
+  <path d="M100 160C105.523 160 110 155.523 110 150C110 144.477 105.523 140 100 140C94.4772 140 90 144.477 90 150C90 155.523 94.4772 160 100 160Z" fill="url(#gradient)" filter="url(#glow)" />
+  <line x1="100" y1="50" x2="60" y2="70" stroke="url(#gradient)" stroke-width="3" />
+  <line x1="100" y1="50" x2="140" y2="70" stroke="url(#gradient)" stroke-width="3" />
+  <line x1="60" y1="90" x2="80" y2="110" stroke="url(#gradient)" stroke-width="3" />
+  <line x1="140" y1="90" x2="120" y2="110" stroke="url(#gradient)" stroke-width="3" />
+  <line x1="80" y1="130" x2="100" y2="140" stroke="url(#gradient)" stroke-width="3" />
+  <line x1="120" y1="130" x2="100" y2="140" stroke="url(#gradient)" stroke-width="3" />
+</svg>
